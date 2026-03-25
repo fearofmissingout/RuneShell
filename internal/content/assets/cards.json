@@ -1,0 +1,891 @@
+[
+  {
+    "id": "slash",
+    "class_id": "neutral",
+    "name": "斩击",
+    "description": "造成 6 伤害。",
+    "rarity": "starter",
+    "cost": 1,
+    "tags": ["attack"],
+    "effects": [{"op": "damage", "value": 6}],
+    "upgrade_effects": [{"op": "damage", "value": 9}]
+  },
+  {
+    "id": "guard",
+    "class_id": "neutral",
+    "name": "格挡",
+    "description": "获得 5 格挡。",
+    "rarity": "starter",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [{"op": "block", "value": 5}],
+    "upgrade_effects": [{"op": "block", "value": 8}]
+  },
+  {
+    "id": "ember_strike",
+    "class_id": "neutral",
+    "name": "余烬打击",
+    "description": "造成 5 伤害并施加 1 层易伤。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["attack"],
+    "effects": [
+      {"op": "damage", "value": 5},
+      {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 7},
+      {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 3}
+    ]
+  },
+  {
+    "id": "windstep",
+    "class_id": "neutral",
+    "name": "风步",
+    "description": "抽 1 张牌并获得 1 能量。",
+    "rarity": "common",
+    "cost": 0,
+    "tags": ["skill"],
+    "effects": [{"op": "draw", "value": 1}, {"op": "gain_energy", "value": 1}],
+    "upgrade_effects": [{"op": "draw", "value": 2}, {"op": "gain_energy", "value": 1}]
+  },
+
+  {
+    "id": "shield_bash",
+    "class_id": "vanguard",
+    "name": "盾击",
+    "description": "获得 4 格挡并造成 7 伤害。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["attack"],
+    "effects": [{"op": "block", "value": 4}, {"op": "damage", "value": 7}],
+    "upgrade_effects": [{"op": "block", "value": 6}, {"op": "damage", "value": 9}]
+  },
+  {
+    "id": "fortify",
+    "class_id": "vanguard",
+    "name": "固守",
+    "description": "获得 10 格挡。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [{"op": "block", "value": 10}],
+    "upgrade_effects": [{"op": "block", "value": 14}]
+  },
+  {
+    "id": "counter_stance",
+    "class_id": "vanguard",
+    "name": "反击架势",
+    "description": "获得 6 格挡并施加 2 层荆棘。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [
+      {"op": "block", "value": 6},
+      {"op": "apply_status", "target": "self", "status": "thorns", "value": 2, "duration": 3}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 8},
+      {"op": "apply_status", "target": "self", "status": "thorns", "value": 3, "duration": 3}
+    ]
+  },
+  {
+    "id": "iron_wave",
+    "class_id": "vanguard",
+    "name": "铁浪",
+    "description": "造成 8 伤害并获得 5 格挡。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["attack"],
+    "effects": [{"op": "damage", "value": 8}, {"op": "block", "value": 5}],
+    "upgrade_effects": [{"op": "damage", "value": 11}, {"op": "block", "value": 7}]
+  },
+  {
+    "id": "battle_focus",
+    "class_id": "vanguard",
+    "name": "战阵专注",
+    "description": "获得 2 层力量。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [{"op": "apply_status", "target": "self", "status": "strength", "value": 2}],
+    "upgrade_effects": [{"op": "apply_status", "target": "self", "status": "strength", "value": 3}]
+  },
+  {
+    "id": "steel_tempest",
+    "class_id": "vanguard",
+    "name": "钢铁风暴",
+    "description": "造成 12 伤害并抽 1 张牌。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["attack"],
+    "effects": [{"op": "damage", "value": 12}, {"op": "draw", "value": 1}],
+    "upgrade_effects": [{"op": "damage", "value": 16}, {"op": "draw", "value": 1}]
+  },
+  {
+    "id": "bulwark_charge",
+    "class_id": "vanguard",
+    "name": "壁垒冲锋",
+    "description": "获得 8 格挡并造成 10 伤害。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["attack"],
+    "effects": [{"op": "block", "value": 8}, {"op": "damage", "value": 10}],
+    "upgrade_effects": [{"op": "block", "value": 11}, {"op": "damage", "value": 13}]
+  },
+  {
+    "id": "crushing_blow",
+    "class_id": "vanguard",
+    "name": "粉碎重击",
+    "description": "造成 14 伤害。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["attack"],
+    "effects": [{"op": "damage", "value": 14}],
+    "upgrade_effects": [{"op": "damage", "value": 18}]
+  },
+  {
+    "id": "unyielding_wall",
+    "class_id": "vanguard",
+    "name": "不屈壁垒",
+    "description": "获得 15 格挡并抽 1 张牌。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["skill"],
+    "effects": [{"op": "block", "value": 15}, {"op": "draw", "value": 1}],
+    "upgrade_effects": [{"op": "block", "value": 20}, {"op": "draw", "value": 1}]
+  },
+  {
+    "id": "retaliate",
+    "class_id": "vanguard",
+    "name": "回击",
+    "description": "施加 3 层荆棘并造成 7 伤害。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["attack"],
+    "effects": [
+      {"op": "apply_status", "target": "self", "status": "thorns", "value": 3, "duration": 2},
+      {"op": "damage", "value": 7}
+    ],
+    "upgrade_effects": [
+      {"op": "apply_status", "target": "self", "status": "thorns", "value": 4, "duration": 3},
+      {"op": "damage", "value": 9}
+    ]
+  },
+  {
+    "id": "vanguard_roar",
+    "class_id": "vanguard",
+    "name": "卫士战吼",
+    "description": "抽 2 张牌并获得 1 能量。",
+    "rarity": "rare",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [{"op": "draw", "value": 2}, {"op": "gain_energy", "value": 1}],
+    "upgrade_effects": [{"op": "draw", "value": 3}, {"op": "gain_energy", "value": 1}]
+  },
+  {
+    "id": "brace_line",
+    "class_id": "vanguard",
+    "name": "列阵固守",
+    "description": "获得 5 格挡并施加 2 层壁守。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [
+      {"op": "block", "value": 5},
+      {"op": "apply_status", "target": "self", "status": "guard", "value": 2, "duration": 3}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 7},
+      {"op": "apply_status", "target": "self", "status": "guard", "value": 3, "duration": 3}
+    ]
+  },
+  {
+    "id": "shield_drill",
+    "class_id": "vanguard",
+    "name": "盾钻",
+    "description": "造成 6 伤害并施加 1 层脆弱。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["attack"],
+    "effects": [
+      {"op": "damage", "value": 6},
+      {"op": "apply_status", "target": "opponent", "status": "frail", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 8},
+      {"op": "apply_status", "target": "opponent", "status": "frail", "value": 2, "duration": 2}
+    ]
+  },
+  {
+    "id": "goading_strike",
+    "class_id": "vanguard",
+    "name": "挑衅斩",
+    "description": "造成 7 伤害并施加 1 层虚弱。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["attack"],
+    "effects": [
+      {"op": "damage", "value": 7},
+      {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 9},
+      {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 3}
+    ]
+  },
+  {
+    "id": "spike_bastion",
+    "class_id": "vanguard",
+    "name": "棘垒",
+    "description": "获得 10 格挡并施加 4 层荆棘。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["skill"],
+    "effects": [
+      {"op": "block", "value": 10},
+      {"op": "apply_status", "target": "self", "status": "thorns", "value": 4, "duration": 3}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 13},
+      {"op": "apply_status", "target": "self", "status": "thorns", "value": 5, "duration": 3}
+    ]
+  },
+  {
+    "id": "banner_of_steel",
+    "class_id": "vanguard",
+    "name": "钢旗",
+    "description": "抽 1 张牌，获得 1 层力量和 1 层壁守。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [
+      {"op": "draw", "value": 1},
+      {"op": "apply_status", "target": "self", "status": "strength", "value": 1},
+      {"op": "apply_status", "target": "self", "status": "guard", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "draw", "value": 2},
+      {"op": "apply_status", "target": "self", "status": "strength", "value": 1},
+      {"op": "apply_status", "target": "self", "status": "guard", "value": 2, "duration": 2}
+    ]
+  },
+  {
+    "id": "warplate_oath",
+    "class_id": "vanguard",
+    "name": "战甲誓言",
+    "description": "获得 4 格挡并施加 3 层再生。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [
+      {"op": "block", "value": 4},
+      {"op": "apply_status", "target": "self", "status": "regen", "value": 3, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 6},
+      {"op": "apply_status", "target": "self", "status": "regen", "value": 4, "duration": 2}
+    ]
+  },
+  {
+    "id": "breach_order",
+    "class_id": "vanguard",
+    "name": "破阵令",
+    "description": "造成 12 伤害，施加 2 层脆弱和 1 层易伤。",
+    "rarity": "rare",
+    "cost": 2,
+    "tags": ["attack"],
+    "effects": [
+      {"op": "damage", "value": 12},
+      {"op": "apply_status", "target": "opponent", "status": "frail", "value": 2, "duration": 2},
+      {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 15},
+      {"op": "apply_status", "target": "opponent", "status": "frail", "value": 2, "duration": 3},
+      {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 3}
+    ]
+  },
+  {
+    "id": "iron_discipline",
+    "class_id": "vanguard",
+    "name": "铁律",
+    "description": "净化虚弱和易伤，获得 6 格挡。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill"],
+    "effects": [
+      {"op": "cleanse_status", "target": "self", "status": "weak", "value": 99},
+      {"op": "cleanse_status", "target": "self", "status": "vulnerable", "value": 99},
+      {"op": "block", "value": 6}
+    ],
+    "upgrade_effects": [
+      {"op": "cleanse_status", "target": "self", "status": "weak", "value": 99},
+      {"op": "cleanse_status", "target": "self", "status": "vulnerable", "value": 99},
+      {"op": "cleanse_status", "target": "self", "status": "frail", "value": 99},
+      {"op": "block", "value": 8}
+    ]
+  },
+
+  {
+    "id": "spark",
+    "class_id": "arcanist",
+    "name": "火花",
+    "description": "造成 5 伤害。",
+    "rarity": "starter",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [{"op": "damage", "value": 5}],
+    "upgrade_effects": [{"op": "damage", "value": 8}]
+  },
+  {
+    "id": "ward",
+    "class_id": "arcanist",
+    "name": "法术护壁",
+    "description": "获得 5 格挡并抽 1 张牌。",
+    "rarity": "starter",
+    "cost": 1,
+    "tags": ["skill", "spell"],
+    "effects": [{"op": "block", "value": 5}, {"op": "draw", "value": 1}],
+    "upgrade_effects": [{"op": "block", "value": 7}, {"op": "draw", "value": 1}]
+  },
+  {
+    "id": "mana_surge",
+    "class_id": "arcanist",
+    "name": "法力涌动",
+    "description": "获得 1 能量并抽 1 张牌。",
+    "rarity": "common",
+    "cost": 0,
+    "tags": ["spell"],
+    "effects": [{"op": "gain_energy", "value": 1}, {"op": "draw", "value": 1}],
+    "upgrade_effects": [{"op": "gain_energy", "value": 1}, {"op": "draw", "value": 2}]
+  },
+  {
+    "id": "arcane_missiles",
+    "class_id": "arcanist",
+    "name": "奥术飞弹",
+    "description": "造成 9 伤害。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [{"op": "damage", "value": 9}],
+    "upgrade_effects": [{"op": "damage", "value": 12}]
+  },
+  {
+    "id": "frost_barrier",
+    "class_id": "arcanist",
+    "name": "霜幕",
+    "description": "获得 9 格挡并施加 1 层虚弱。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "block", "value": 9},
+      {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 12},
+      {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 3}
+    ]
+  },
+  {
+    "id": "insight",
+    "class_id": "arcanist",
+    "name": "洞悉",
+    "description": "抽 2 张牌。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill", "spell"],
+    "effects": [{"op": "draw", "value": 2}],
+    "upgrade_effects": [{"op": "draw", "value": 3}]
+  },
+  {
+    "id": "hex_bolt",
+    "class_id": "arcanist",
+    "name": "咒缚箭",
+    "description": "造成 6 伤害并施加 1 层易伤。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "damage", "value": 6},
+      {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 8},
+      {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 3}
+    ]
+  },
+  {
+    "id": "storm_script",
+    "class_id": "arcanist",
+    "name": "雷文",
+    "description": "造成 13 伤害。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["spell"],
+    "effects": [{"op": "damage", "value": 13}],
+    "upgrade_effects": [{"op": "damage", "value": 17}]
+  },
+  {
+    "id": "chain_burst",
+    "class_id": "arcanist",
+    "name": "连锁爆裂",
+    "description": "造成 8 伤害并抽 1 张牌。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [{"op": "damage", "value": 8}, {"op": "draw", "value": 1}],
+    "upgrade_effects": [{"op": "damage", "value": 10}, {"op": "draw", "value": 1}]
+  },
+  {
+    "id": "rune_shield",
+    "class_id": "arcanist",
+    "name": "符文护盾",
+    "description": "获得 12 格挡。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["spell"],
+    "effects": [{"op": "block", "value": 12}],
+    "upgrade_effects": [{"op": "block", "value": 16}]
+  },
+  {
+    "id": "echo_draw",
+    "class_id": "arcanist",
+    "name": "回响抽取",
+    "description": "抽 3 张牌。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [{"op": "draw", "value": 3}],
+    "upgrade_effects": [{"op": "draw", "value": 4}]
+  },
+  {
+    "id": "astral_lance",
+    "class_id": "arcanist",
+    "name": "星枪",
+    "description": "造成 16 伤害。",
+    "rarity": "rare",
+    "cost": 2,
+    "tags": ["spell"],
+    "effects": [{"op": "damage", "value": 16}],
+    "upgrade_effects": [{"op": "damage", "value": 21}]
+  },
+  {
+    "id": "mirror_current",
+    "class_id": "arcanist",
+    "name": "镜流",
+    "description": "获得 1 层力量并抽 1 张牌。",
+    "rarity": "rare",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "apply_status", "target": "self", "status": "strength", "value": 1},
+      {"op": "draw", "value": 1}
+    ],
+    "upgrade_effects": [
+      {"op": "apply_status", "target": "self", "status": "strength", "value": 2},
+      {"op": "draw", "value": 1}
+    ]
+  },
+  {
+    "id": "mana_prism",
+    "class_id": "arcanist",
+    "name": "法棱",
+    "description": "获得 2 能量。",
+    "rarity": "rare",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [{"op": "gain_energy", "value": 2}],
+    "upgrade_effects": [{"op": "gain_energy", "value": 3}]
+  },
+  {
+    "id": "cinder_mark",
+    "class_id": "arcanist",
+    "name": "烬印",
+    "description": "造成 4 伤害并施加 3 层燃烧。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "damage", "value": 4},
+      {"op": "apply_status", "target": "opponent", "status": "burn", "value": 3, "duration": 3}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 6},
+      {"op": "apply_status", "target": "opponent", "status": "burn", "value": 4, "duration": 3}
+    ]
+  },
+  {
+    "id": "meditation_array",
+    "class_id": "arcanist",
+    "name": "冥想矩阵",
+    "description": "抽 1 张牌并施加 2 层聚能。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill", "spell"],
+    "effects": [
+      {"op": "draw", "value": 1},
+      {"op": "apply_status", "target": "self", "status": "focus", "value": 2, "duration": 3}
+    ],
+    "upgrade_effects": [
+      {"op": "draw", "value": 1},
+      {"op": "apply_status", "target": "self", "status": "focus", "value": 3, "duration": 3}
+    ]
+  },
+  {
+    "id": "mana_weave",
+    "class_id": "arcanist",
+    "name": "法力编织",
+    "description": "获得 1 能量并施加 1 层聚能。",
+    "rarity": "common",
+    "cost": 0,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "gain_energy", "value": 1},
+      {"op": "apply_status", "target": "self", "status": "focus", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "gain_energy", "value": 1},
+      {"op": "apply_status", "target": "self", "status": "focus", "value": 2, "duration": 2}
+    ]
+  },
+  {
+    "id": "stasis_shell",
+    "class_id": "arcanist",
+    "name": "静滞外壳",
+    "description": "获得 7 格挡并施加 2 层再生。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "block", "value": 7},
+      {"op": "apply_status", "target": "self", "status": "regen", "value": 2, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 9},
+      {"op": "apply_status", "target": "self", "status": "regen", "value": 3, "duration": 2}
+    ]
+  },
+  {
+    "id": "kindle_hex",
+    "class_id": "arcanist",
+    "name": "引燃咒",
+    "description": "施加 5 层燃烧并抽 1 张牌。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "apply_status", "target": "opponent", "status": "burn", "value": 5, "duration": 3},
+      {"op": "draw", "value": 1}
+    ],
+    "upgrade_effects": [
+      {"op": "apply_status", "target": "opponent", "status": "burn", "value": 6, "duration": 3},
+      {"op": "draw", "value": 1}
+    ]
+  },
+  {
+    "id": "ember_echo",
+    "class_id": "arcanist",
+    "name": "烬火回响",
+    "description": "造成 8 伤害，施加 4 层燃烧并抽 1 张牌。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "damage", "value": 8},
+      {"op": "apply_status", "target": "opponent", "status": "burn", "value": 4, "duration": 3},
+      {"op": "draw", "value": 1}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 10},
+      {"op": "apply_status", "target": "opponent", "status": "burn", "value": 5, "duration": 3},
+      {"op": "draw", "value": 1}
+    ]
+  },
+  {
+    "id": "purge_formula",
+    "class_id": "arcanist",
+    "name": "净化公式",
+    "description": "净化虚弱和易伤并抽 1 张牌。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["skill", "spell"],
+    "effects": [
+      {"op": "cleanse_status", "target": "self", "status": "weak", "value": 99},
+      {"op": "cleanse_status", "target": "self", "status": "vulnerable", "value": 99},
+      {"op": "draw", "value": 1}
+    ],
+    "upgrade_effects": [
+      {"op": "cleanse_status", "target": "self", "status": "weak", "value": 99},
+      {"op": "cleanse_status", "target": "self", "status": "vulnerable", "value": 99},
+      {"op": "cleanse_status", "target": "self", "status": "frail", "value": 99},
+      {"op": "draw", "value": 2}
+    ]
+  },
+  {
+    "id": "starflare",
+    "class_id": "arcanist",
+    "name": "星焰",
+    "description": "造成 10 伤害，施加 3 层燃烧，并获得 1 层聚能。",
+    "rarity": "rare",
+    "cost": 2,
+    "tags": ["spell"],
+    "effects": [
+      {"op": "damage", "value": 10},
+      {"op": "apply_status", "target": "opponent", "status": "burn", "value": 3, "duration": 3},
+      {"op": "apply_status", "target": "self", "status": "focus", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 13},
+      {"op": "apply_status", "target": "opponent", "status": "burn", "value": 4, "duration": 3},
+      {"op": "apply_status", "target": "self", "status": "focus", "value": 2, "duration": 2}
+    ]
+  },
+  {
+    "id": "catalyst_field",
+    "class_id": "arcanist",
+    "name": "催化场",
+    "description": "抽 2 张牌并施加 3 层聚能。",
+    "rarity": "rare",
+    "cost": 2,
+    "tags": ["skill", "spell"],
+    "effects": [
+      {"op": "draw", "value": 2},
+      {"op": "apply_status", "target": "self", "status": "focus", "value": 3, "duration": 3}
+    ],
+    "upgrade_effects": [
+      {"op": "draw", "value": 3},
+      {"op": "apply_status", "target": "self", "status": "focus", "value": 4, "duration": 3}
+    ]
+  },
+  {
+    "id": "cover_formation",
+    "class_id": "neutral",
+    "name": "掩护阵型",
+    "description": "目标友军获得 9 格挡并施加 1 层庇护。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["skill"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "value": 9},
+      {"op": "apply_status", "status": "sheltered", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 12},
+      {"op": "apply_status", "status": "sheltered", "value": 2, "duration": 2}
+    ]
+  },
+  {
+    "id": "shield_link",
+    "class_id": "neutral",
+    "name": "盾链同步",
+    "description": "全体友军获得 6 格挡。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "target": "all_allies", "value": 6}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "target": "all_allies", "value": 9}
+    ]
+  },
+  {
+    "id": "triage_signal",
+    "class_id": "neutral",
+    "name": "战地急救讯号",
+    "description": "全体友军恢复 4 生命并净化燃烧。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["skill"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "heal", "target": "all_allies", "value": 4},
+      {"op": "cleanse_status", "target": "all_allies", "status": "burn", "value": 99}
+    ],
+    "upgrade_effects": [
+      {"op": "heal", "target": "all_allies", "value": 6},
+      {"op": "cleanse_status", "target": "all_allies", "status": "burn", "value": 99}
+    ]
+  },
+  {
+    "id": "taunting_call",
+    "class_id": "neutral",
+    "name": "挑衅号令",
+    "description": "获得 8 格挡并施加 2 层嘲讽。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "value": 8},
+      {"op": "apply_status", "target": "self", "status": "taunt", "value": 2, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 11},
+      {"op": "apply_status", "target": "self", "status": "taunt", "value": 3, "duration": 2}
+    ]
+  },
+  {
+    "id": "relay_focus",
+    "class_id": "neutral",
+    "name": "聚能接力",
+    "description": "全体友军获得 1 层聚能。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["skill", "spell"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "apply_status", "target": "all_allies", "status": "focus", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "apply_status", "target": "all_allies", "status": "focus", "value": 2, "duration": 2}
+    ]
+  },
+  {
+    "id": "breach_mark",
+    "class_id": "neutral",
+    "name": "破口标记",
+    "description": "造成 6 伤害并施加 2 层易伤。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["attack"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "damage", "value": 6},
+      {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 2, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "value": 8},
+      {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 2, "duration": 3}
+    ]
+  },
+  {
+    "id": "sanctuary_weave",
+    "class_id": "neutral",
+    "name": "圣域编织",
+    "description": "全体友军获得 8 格挡并净化易伤。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["skill", "spell"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "target": "all_allies", "value": 8},
+      {"op": "cleanse_status", "target": "all_allies", "status": "vulnerable", "value": 99}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "target": "all_allies", "value": 11},
+      {"op": "cleanse_status", "target": "all_allies", "status": "vulnerable", "value": 99},
+      {"op": "cleanse_status", "target": "all_allies", "status": "frail", "value": 99}
+    ]
+  },
+  {
+    "id": "pack_tactics",
+    "class_id": "neutral",
+    "name": "协猎战术",
+    "description": "全体友军获得 1 层力量。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["skill"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "apply_status", "target": "all_allies", "status": "strength", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "apply_status", "target": "all_allies", "status": "strength", "value": 2, "duration": 2}
+    ]
+  },
+  {
+    "id": "marked_for_all",
+    "class_id": "neutral",
+    "name": "共同标定",
+    "description": "对全体敌人造成 5 伤害并施加 1 层易伤。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["spell"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "damage", "target": "all_enemies", "value": 5},
+      {"op": "apply_status", "target": "all_enemies", "status": "vulnerable", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "target": "all_enemies", "value": 7},
+      {"op": "apply_status", "target": "all_enemies", "status": "vulnerable", "value": 1, "duration": 3}
+    ]
+  },
+  {
+    "id": "last_stand_oath",
+    "class_id": "neutral",
+    "name": "死守誓约",
+    "description": "全体友军获得 5 格挡，自己获得 3 层嘲讽。",
+    "rarity": "rare",
+    "cost": 1,
+    "tags": ["skill"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "target": "all_allies", "value": 5},
+      {"op": "apply_status", "target": "self", "status": "taunt", "value": 3, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "target": "all_allies", "value": 7},
+      {"op": "apply_status", "target": "self", "status": "taunt", "value": 4, "duration": 2}
+    ]
+  },
+  {
+    "id": "relay_bulwark",
+    "class_id": "neutral",
+    "name": "接力壁垒",
+    "description": "目标友军获得 7 格挡并获得 2 层再生。",
+    "rarity": "uncommon",
+    "cost": 1,
+    "tags": ["skill"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "value": 7},
+      {"op": "apply_status", "status": "regen", "value": 2, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "value": 10},
+      {"op": "apply_status", "status": "regen", "value": 3, "duration": 2}
+    ]
+  },
+  {
+    "id": "frontline_signal",
+    "class_id": "neutral",
+    "name": "战线信号",
+    "description": "全体友军获得 4 格挡，自己获得 2 层嘲讽。",
+    "rarity": "common",
+    "cost": 1,
+    "tags": ["skill"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "target": "all_allies", "value": 4},
+      {"op": "apply_status", "target": "self", "status": "taunt", "value": 2, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "block", "target": "all_allies", "value": 6},
+      {"op": "apply_status", "target": "self", "status": "taunt", "value": 3, "duration": 2}
+    ]
+  },
+  {
+    "id": "suppression_grid",
+    "class_id": "neutral",
+    "name": "压制网格",
+    "description": "对全体敌人造成 4 伤害并施加 1 层虚弱。",
+    "rarity": "uncommon",
+    "cost": 2,
+    "tags": ["attack", "spell"],
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "damage", "target": "all_enemies", "value": 4},
+      {"op": "apply_status", "target": "all_enemies", "status": "weak", "value": 1, "duration": 2}
+    ],
+    "upgrade_effects": [
+      {"op": "damage", "target": "all_enemies", "value": 6},
+      {"op": "apply_status", "target": "all_enemies", "status": "weak", "value": 2, "duration": 2}
+    ]
+  }
+]

@@ -1,0 +1,291 @@
+[
+  {
+    "id": "ancient_forge",
+    "name": "古旧熔炉",
+    "description": "一座仍在发热的熔炉埋在砖石下方。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "temper",
+        "label": "回火锻打",
+        "description": "强化一张可升级卡牌。",
+        "effects": [
+          {"op": "upgrade_card"}
+        ]
+      },
+      {
+        "id": "take_blade",
+        "label": "取走护符",
+        "description": "获得獠牙护符。",
+        "effects": [
+          {"op": "gain_equipment", "item_id": "fang_charm"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "silent_pool",
+    "name": "寂静水潭",
+    "description": "池水倒映着异样的光。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "drink",
+        "label": "饮用池水",
+        "description": "恢复 20 生命。",
+        "effects": [
+          {"op": "heal", "value": 20}
+        ]
+      },
+      {
+        "id": "offer",
+        "label": "投下硬币",
+        "description": "换来一瓶聚能药剂。",
+        "effects": [
+          {"op": "gain_potion", "item_id": "potion_focus"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "fallen_pack",
+    "name": "遗落行囊",
+    "description": "路边遗落的包裹半开着。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "loot",
+        "label": "翻找补给",
+        "description": "获得 35 金币。",
+        "effects": [
+          {"op": "gain_gold", "value": 35}
+        ]
+      },
+      {
+        "id": "read_note",
+        "label": "阅读笔记",
+        "description": "获得一张风步。",
+        "effects": [
+          {"op": "add_card", "card_id": "windstep"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "arcane_echo",
+    "name": "奥术回音",
+    "description": "空气里残留着扭曲的咒文回响。",
+    "acts": [2, 3],
+    "choices": [
+      {
+        "id": "attune",
+        "label": "调谐残响",
+        "description": "获得咒核。",
+        "effects": [
+          {"op": "gain_relic", "item_id": "spell_core"}
+        ]
+      },
+      {
+        "id": "shield",
+        "label": "压制波纹",
+        "description": "最大生命 +6。",
+        "effects": [
+          {"op": "gain_max_hp", "value": 6}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "scarred_altar",
+    "name": "伤痕祭坛",
+    "description": "祭坛上刻着与代价有关的古老文字。",
+    "acts": [2, 3],
+    "choices": [
+      {
+        "id": "blood_for_power",
+        "label": "献上鲜血",
+        "description": "失去 10 生命，获得余烬图腾。",
+        "effects": [
+          {"op": "lose_hp", "value": 10},
+          {"op": "gain_relic", "item_id": "ember_totem"}
+        ]
+      },
+      {
+        "id": "step_back",
+        "label": "谨慎离开",
+        "description": "恢复 10 生命。",
+        "effects": [
+          {"op": "heal", "value": 10}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "field_workbench",
+    "name": "野战工台",
+    "description": "散落的工具和半成品装备还留着余温。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "reforge_blade",
+        "label": "重铸军刃",
+        "description": "获得炽钢刃。",
+        "effects": [
+          {"op": "gain_equipment", "item_id": "sunsteel_blade"}
+        ]
+      },
+      {
+        "id": "seal_armor",
+        "label": "缝补护具",
+        "description": "获得护印壳。",
+        "effects": [
+          {"op": "gain_equipment", "item_id": "ward_shell"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "glass_sanctum",
+    "name": "玻璃圣龛",
+    "description": "薄如蝉翼的晶面里封着一段仍在闪烁的灵光。",
+    "acts": [2, 3],
+    "choices": [
+      {
+        "id": "touch_core",
+        "label": "触摸晶核",
+        "description": "失去 12 生命，获得聚能棱镜。",
+        "effects": [
+          {"op": "lose_hp", "value": 12},
+          {"op": "gain_equipment", "item_id": "focus_prism"}
+        ]
+      },
+      {
+        "id": "bottle_light",
+        "label": "封存灵光",
+        "description": "获得一瓶聚能药剂。",
+        "effects": [
+          {"op": "gain_potion", "item_id": "potion_focus"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "blood_coffer",
+    "name": "血印密匣",
+    "description": "封匣表面的纹路像脉搏一样微微起伏。",
+    "acts": [2, 3],
+    "choices": [
+      {
+        "id": "break_seal",
+        "label": "强行破封",
+        "description": "失去 8 生命，获得 75 金币。",
+        "effects": [
+          {"op": "lose_hp", "value": 8},
+          {"op": "gain_gold", "value": 75}
+        ]
+      },
+      {
+        "id": "wear_token",
+        "label": "佩戴信物",
+        "description": "获得血琉吊坠。",
+        "effects": [
+          {"op": "gain_equipment", "item_id": "bloodglass_pendant"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "relic_annealer",
+    "name": "遗物淬火台",
+    "description": "一座仍在低鸣的古老装置，似乎能让某些遗物再次苏醒。",
+    "acts": [2, 3],
+    "choices": [
+      {
+        "id": "awaken_banner",
+        "label": "重燃战旗",
+        "description": "将战旗升级为觉醒战旗。",
+        "requires_relics": ["war_banner"],
+        "effects": [
+          {"op": "upgrade_relic", "item_id": "war_banner", "result_id": "war_banner_awakened"}
+        ]
+      },
+      {
+        "id": "awaken_hourglass",
+        "label": "重塑沙漏",
+        "description": "将水晶沙漏升级为觉醒水晶沙漏。",
+        "requires_relics": ["crystal_hourglass"],
+        "effects": [
+          {"op": "upgrade_relic", "item_id": "crystal_hourglass", "result_id": "crystal_hourglass_awakened"}
+        ]
+      },
+      {
+        "id": "awaken_ember",
+        "label": "灌注余烬",
+        "description": "将余烬图腾升级为余烬图腾·炽核。",
+        "requires_relics": ["ember_totem"],
+        "effects": [
+          {"op": "upgrade_relic", "item_id": "ember_totem", "result_id": "ember_totem_awakened"}
+        ]
+      },
+      {
+        "id": "awaken_core",
+        "label": "共鸣咒核",
+        "description": "将咒核升级为咒核·共鸣。",
+        "requires_relics": ["spell_core"],
+        "effects": [
+          {"op": "upgrade_relic", "item_id": "spell_core", "result_id": "spell_core_awakened"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "war_council",
+    "name": "战术圆桌",
+    "description": "一群仍在争论战术的幸存者向你发出了入座邀请。",
+    "acts": [1, 2, 3],
+    "flags": ["coop_only"],
+    "choices": [
+      {
+        "id": "share_plan",
+        "label": "交换战术记录",
+        "description": "获得协猎战术。",
+        "effects": [
+          {"op": "add_card", "card_id": "pack_tactics"}
+        ]
+      },
+      {
+        "id": "seal_pact",
+        "label": "签下围猎协定",
+        "description": "获得联结臂甲。",
+        "effects": [
+          {"op": "gain_relic", "item_id": "linked_bracers"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "relay_cache",
+    "name": "接力补给箱",
+    "description": "箱盖内侧写着只有协同小队才看得懂的补给编号。",
+    "acts": [1, 2, 3],
+    "flags": ["coop_only"],
+    "choices": [
+      {
+        "id": "take_barrier_pattern",
+        "label": "取走护阵图纸",
+        "description": "获得圣域编织。",
+        "effects": [
+          {"op": "add_card", "card_id": "sanctuary_weave"}
+        ]
+      },
+      {
+        "id": "raise_signal",
+        "label": "升起信号旗",
+        "description": "获得信号战鼓。",
+        "effects": [
+          {"op": "gain_relic", "item_id": "signal_drum"}
+        ]
+      }
+    ]
+  }
+]

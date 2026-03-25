@@ -1,0 +1,193 @@
+[
+  {
+    "id": "ironblade",
+    "name": "铁棱剑",
+    "description": "攻击牌额外造成 2 伤害。",
+    "slot": "weapon",
+    "rarity": "starter",
+    "effects": [
+      {"op": "modify_damage", "trigger": "attack", "value": 2}
+    ]
+  },
+  {
+    "id": "rune_staff",
+    "name": "符文杖",
+    "description": "法术牌额外造成 2 伤害。",
+    "slot": "weapon",
+    "rarity": "starter",
+    "effects": [
+      {"op": "modify_damage", "trigger": "spell", "value": 2}
+    ]
+  },
+  {
+    "id": "guardmail",
+    "name": "守备甲",
+    "description": "受到的伤害减少 1 点。",
+    "slot": "armor",
+    "rarity": "starter",
+    "effects": [
+      {"op": "modify_taken_damage", "trigger": "incoming_damage", "value": -1}
+    ]
+  },
+  {
+    "id": "silk_robe",
+    "name": "织纹法袍",
+    "description": "每回合开始时获得 2 格挡。",
+    "slot": "armor",
+    "rarity": "starter",
+    "effects": [
+      {"op": "block", "trigger": "turn_start", "value": 2}
+    ]
+  },
+  {
+    "id": "sunsteel_blade",
+    "name": "炽钢刃",
+    "description": "攻击牌额外造成 3 伤害。",
+    "slot": "weapon",
+    "rarity": "common",
+    "effects": [
+      {"op": "modify_damage", "trigger": "attack", "value": 3}
+    ]
+  },
+  {
+    "id": "storm_focus",
+    "name": "风暴焦杖",
+    "description": "法术牌额外造成 3 伤害。",
+    "slot": "weapon",
+    "rarity": "uncommon",
+    "effects": [
+      {"op": "modify_damage", "trigger": "spell", "value": 3}
+    ]
+  },
+  {
+    "id": "breaker_halberd",
+    "name": "破阵戟",
+    "description": "战斗开始时获得 2 层力量。",
+    "slot": "weapon",
+    "rarity": "rare",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "strength", "value": 2}
+    ]
+  },
+  {
+    "id": "ember_lens",
+    "name": "余烬透镜",
+    "description": "战斗开始时获得 2 层聚能。",
+    "slot": "weapon",
+    "rarity": "rare",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "focus", "value": 2}
+    ]
+  },
+  {
+    "id": "plate_rampart",
+    "name": "堡垒板甲",
+    "description": "受到的伤害减少 2 点。",
+    "slot": "armor",
+    "rarity": "common",
+    "effects": [
+      {"op": "modify_taken_damage", "trigger": "incoming_damage", "value": -2}
+    ]
+  },
+  {
+    "id": "ward_shell",
+    "name": "护印壳",
+    "description": "每回合开始时获得 4 格挡。",
+    "slot": "armor",
+    "rarity": "uncommon",
+    "effects": [
+      {"op": "block", "trigger": "turn_start", "value": 4}
+    ]
+  },
+  {
+    "id": "lifeweave_cloak",
+    "name": "生息披风",
+    "description": "每回合结束时恢复 2 生命。",
+    "slot": "armor",
+    "rarity": "rare",
+    "effects": [
+      {"op": "heal", "trigger": "player_turn_end", "value": 2}
+    ]
+  },
+  {
+    "id": "purity_mail",
+    "name": "净域甲",
+    "description": "战斗开始时获得 3 层壁守。",
+    "slot": "armor",
+    "rarity": "rare",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "guard", "value": 3}
+    ]
+  },
+  {
+    "id": "fang_charm",
+    "name": "獠牙护符",
+    "description": "战斗开始时获得 1 层力量。",
+    "slot": "accessory",
+    "rarity": "uncommon",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "strength", "value": 1}
+    ]
+  },
+  {
+    "id": "mirror_band",
+    "name": "镜环",
+    "description": "每回合开始时抽 1 张牌。",
+    "slot": "accessory",
+    "rarity": "uncommon",
+    "effects": [
+      {"op": "draw", "trigger": "turn_start", "value": 1}
+    ]
+  },
+  {
+    "id": "thorn_emblem",
+    "name": "荆冠徽记",
+    "description": "战斗开始时获得 2 层荆棘。",
+    "slot": "accessory",
+    "rarity": "common",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "thorns", "value": 2}
+    ]
+  },
+  {
+    "id": "purity_loop",
+    "name": "净化环",
+    "description": "每回合开始时净化 1 层脆弱和虚弱。",
+    "slot": "accessory",
+    "rarity": "uncommon",
+    "effects": [
+      {"op": "cleanse_status", "trigger": "player_turn_start", "target": "self", "status": "frail", "value": 1},
+      {"op": "cleanse_status", "trigger": "player_turn_start", "target": "self", "status": "weak", "value": 1}
+    ]
+  },
+  {
+    "id": "focus_prism",
+    "name": "聚能棱镜",
+    "description": "战斗开始时获得 1 层聚能。",
+    "slot": "accessory",
+    "rarity": "rare",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "focus", "value": 1}
+    ]
+  },
+  {
+    "id": "bulwark_sigil",
+    "name": "壁守纹章",
+    "description": "战斗开始时获得 2 层壁守。",
+    "slot": "accessory",
+    "rarity": "rare",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "guard", "value": 2}
+    ]
+  },
+  {
+    "id": "bloodglass_pendant",
+    "name": "血琉吊坠",
+    "description": "战斗开始时获得 2 层再生。",
+    "slot": "accessory",
+    "rarity": "rare",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "regen", "value": 2}
+    ]
+  }
+]

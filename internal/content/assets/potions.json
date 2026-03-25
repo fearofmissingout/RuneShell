@@ -1,0 +1,5 @@
+[
+  {"id":"tonic_minor","name":"小型回复剂","description":"恢复 16 生命。","rarity":"common","effects":[{"op":"heal","value":16}]},
+  {"id":"potion_focus","name":"聚能药剂","description":"获得 2 能量并抽 1 张牌。","rarity":"common","effects":[{"op":"gain_energy","value":2},{"op":"draw","value":1}]},
+  {"id":"potion_fury","name":"暴怒药剂","description":"本场战斗获得 3 层力量。","rarity":"uncommon","effects":[{"op":"apply_status","target":"self","status":"strength","value":3}]}
+]

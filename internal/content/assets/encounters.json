@@ -1,0 +1,229 @@
+[
+  {
+    "id": "act1_raider",
+    "name": "裂谷掠夺者",
+    "kind": "monster",
+    "act": 1,
+    "hp": 34,
+    "gold_reward": 18,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "突刺", "description": "攻击", "effects": [{"op": "damage", "value": 8, "tag": "attack"}]},
+      {"name": "压制", "description": "攻击并强化自身", "effects": [{"op": "damage", "value": 6, "tag": "attack"}, {"op": "apply_status", "target": "self", "status": "strength", "value": 1}]}
+    ]
+  },
+  {
+    "id": "act1_fangbeast",
+    "name": "裂牙兽",
+    "kind": "monster",
+    "act": 1,
+    "hp": 38,
+    "gold_reward": 20,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "撕咬", "description": "攻击并施加脆弱", "effects": [{"op": "damage", "value": 8, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "frail", "value": 1, "duration": 2}]},
+      {"name": "蓄势", "description": "格挡", "effects": [{"op": "block", "value": 6}]}
+    ]
+  },
+  {
+    "id": "act1_watcher",
+    "name": "灰烬监工",
+    "kind": "monster",
+    "act": 1,
+    "hp": 40,
+    "gold_reward": 21,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "重棍", "description": "攻击", "effects": [{"op": "damage", "value": 10, "tag": "attack"}]},
+      {"name": "烙印", "description": "施加燃烧", "effects": [{"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}]}
+    ]
+  },
+  {
+    "id": "act1_elite",
+    "name": "壁垒哨兵",
+    "kind": "elite",
+    "act": 1,
+    "hp": 68,
+    "gold_reward": 42,
+    "card_reward": 3,
+    "passives": [
+      {"op": "block", "trigger": "combat_start", "value": 10},
+      {"op": "heal", "trigger": "enemy_turn_end", "value": 2}
+    ],
+    "intent_cycle": [
+      {"name": "破城", "description": "攻击并施加脆弱", "effects": [{"op": "damage", "value": 11, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "frail", "value": 1, "duration": 2}]},
+      {"name": "铁壁", "description": "格挡并施加荆棘", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "self", "status": "thorns", "value": 2, "duration": 2}]},
+      {"name": "横扫", "description": "连续压制", "effects": [{"op": "damage", "value": 12, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]}
+    ]
+  },
+  {
+    "id": "act1_boss",
+    "name": "余烬巨像",
+    "kind": "boss",
+    "act": 1,
+    "hp": 124,
+    "gold_reward": 90,
+    "card_reward": 3,
+    "passives": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "regen", "value": 2, "duration": 4},
+      {"op": "block", "trigger": "enemy_turn_start", "value": 4}
+    ],
+    "intent_cycle": [
+      {"name": "熔焰吐息", "description": "施加燃烧", "effects": [{"op": "damage", "value": 9, "tag": "spell"}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}]},
+      {"name": "熔甲", "description": "格挡并削弱防御", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "opponent", "status": "frail", "value": 1, "duration": 2}, {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}]},
+      {"name": "烈焰践踏", "description": "重击", "effects": [{"op": "damage", "value": 16, "tag": "attack"}]}
+    ]
+  },
+
+  {
+    "id": "act2_duelist",
+    "name": "暮色决斗者",
+    "kind": "monster",
+    "act": 2,
+    "hp": 52,
+    "gold_reward": 25,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "连斩", "description": "攻击", "effects": [{"op": "damage", "value": 11, "tag": "attack"}]},
+      {"name": "挑筋", "description": "削弱你的攻击", "effects": [{"op": "damage", "value": 8, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]}
+    ]
+  },
+  {
+    "id": "act2_sentry",
+    "name": "失序哨兵",
+    "kind": "monster",
+    "act": 2,
+    "hp": 56,
+    "gold_reward": 26,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "磁击", "description": "攻击并施加脆弱", "effects": [{"op": "damage", "value": 11, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "frail", "value": 1, "duration": 2}]},
+      {"name": "过载", "description": "施加易伤", "effects": [{"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}]}
+    ]
+  },
+  {
+    "id": "act2_shade",
+    "name": "幽幕行者",
+    "kind": "monster",
+    "act": 2,
+    "hp": 54,
+    "gold_reward": 27,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "渗透", "description": "攻击并施加燃烧", "effects": [{"op": "damage", "value": 10, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 2}]},
+      {"name": "腐化", "description": "施加虚弱", "effects": [{"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]}
+    ]
+  },
+  {
+    "id": "act2_elite",
+    "name": "机巧执法者",
+    "kind": "elite",
+    "act": 2,
+    "hp": 90,
+    "gold_reward": 55,
+    "card_reward": 3,
+    "passives": [
+      {"op": "block", "trigger": "combat_start", "value": 8},
+      {"op": "apply_status", "trigger": "enemy_turn_start", "target": "self", "status": "focus", "value": 1, "duration": 2}
+    ],
+    "intent_cycle": [
+      {"name": "重炮", "description": "法术重击", "effects": [{"op": "damage", "value": 15, "tag": "spell"}]},
+      {"name": "装甲修复", "description": "治疗并净化脆弱", "effects": [{"op": "heal", "value": 6}, {"op": "cleanse_status", "target": "self", "status": "frail", "value": 99}, {"op": "block", "value": 10}]},
+      {"name": "磁化牵引", "description": "格挡并施加虚弱", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]}
+    ]
+  },
+  {
+    "id": "act2_boss",
+    "name": "观测塔先知",
+    "kind": "boss",
+    "act": 2,
+    "hp": 148,
+    "gold_reward": 110,
+    "card_reward": 3,
+    "passives": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "focus", "value": 2},
+      {"op": "heal", "trigger": "enemy_turn_end", "value": 3}
+    ],
+    "intent_cycle": [
+      {"name": "虚空矛", "description": "法术重击并施加虚弱", "effects": [{"op": "damage", "value": 15, "tag": "spell"}, {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]},
+      {"name": "预言封锁", "description": "格挡并施加燃烧与易伤", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}]},
+      {"name": "星界洪流", "description": "法术重击并施加脆弱", "effects": [{"op": "damage", "value": 18, "tag": "spell"}, {"op": "apply_status", "target": "opponent", "status": "frail", "value": 1, "duration": 2}]}
+    ]
+  },
+
+  {
+    "id": "act3_reaver",
+    "name": "深渊收割者",
+    "kind": "monster",
+    "act": 3,
+    "hp": 64,
+    "gold_reward": 31,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "收割", "description": "攻击并施加燃烧", "effects": [{"op": "damage", "value": 12, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}]},
+      {"name": "汲取", "description": "攻击并治疗", "effects": [{"op": "damage", "value": 10, "tag": "attack"}, {"op": "heal", "value": 4}]}
+    ]
+  },
+  {
+    "id": "act3_sorcerer",
+    "name": "裂界术士",
+    "kind": "monster",
+    "act": 3,
+    "hp": 66,
+    "gold_reward": 32,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "虚空弹", "description": "法术攻击", "effects": [{"op": "damage", "value": 13, "tag": "spell"}]},
+      {"name": "咒蚀", "description": "施加易伤与燃烧", "effects": [{"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}]}
+    ]
+  },
+  {
+    "id": "act3_guardian",
+    "name": "绝域守卫",
+    "kind": "monster",
+    "act": 3,
+    "hp": 70,
+    "gold_reward": 33,
+    "card_reward": 3,
+    "intent_cycle": [
+      {"name": "重盾撞击", "description": "攻击并施加脆弱", "effects": [{"op": "damage", "value": 14, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "frail", "value": 1, "duration": 2}]},
+      {"name": "守护仪式", "description": "格挡并再生", "effects": [{"op": "block", "value": 14}, {"op": "apply_status", "target": "self", "status": "regen", "value": 2, "duration": 2}]}
+    ]
+  },
+  {
+    "id": "act3_elite",
+    "name": "终焉追猎者",
+    "kind": "elite",
+    "act": 3,
+    "hp": 96,
+    "gold_reward": 70,
+    "card_reward": 3,
+    "passives": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "strength", "value": 2}
+    ],
+    "intent_cycle": [
+      {"name": "裂刃", "description": "攻击并施加燃烧", "effects": [{"op": "damage", "value": 14, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}]},
+      {"name": "咒甲", "description": "格挡并净化易伤", "effects": [{"op": "block", "value": 12}, {"op": "cleanse_status", "target": "self", "status": "vulnerable", "value": 99}]},
+      {"name": "处刑", "description": "重击并施加易伤", "effects": [{"op": "damage", "value": 17, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}]}
+    ]
+  },
+  {
+    "id": "act3_boss",
+    "name": "终幕之王",
+    "kind": "boss",
+    "act": 3,
+    "hp": 162,
+    "gold_reward": 140,
+    "card_reward": 3,
+    "passives": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "strength", "value": 2},
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "focus", "value": 2},
+      {"op": "block", "trigger": "enemy_turn_end", "value": 4}
+    ],
+    "intent_cycle": [
+      {"name": "王权斩", "description": "强攻并施加虚弱", "effects": [{"op": "damage", "value": 16, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]},
+      {"name": "末日宣告", "description": "施加燃烧与易伤并格挡", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 3, "duration": 3}, {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}]},
+      {"name": "湮灭波", "description": "法术重击并净化虚弱", "effects": [{"op": "damage", "value": 20, "tag": "spell"}, {"op": "cleanse_status", "target": "self", "status": "weak", "value": 99}]}
+    ]
+  }
+]

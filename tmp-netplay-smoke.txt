@@ -1,0 +1,5 @@
+﻿STEP host start
+ERROR=Cannot overwrite variable Host because it is read-only or constant.
+AT=At line:32 char:3
++   $host = Start-Client 'host --port 7791 --name Host --class vanguard ...
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

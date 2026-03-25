@@ -1,0 +1,182 @@
+[
+  {
+    "id": "war_banner",
+    "name": "战旗",
+    "description": "战斗开始时获得 1 层力量。",
+    "rarity": "starter",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "strength", "value": 1}
+    ]
+  },
+  {
+    "id": "crystal_hourglass",
+    "name": "水晶沙漏",
+    "description": "每回合开始时抽 1 张牌。",
+    "rarity": "starter",
+    "effects": [
+      {"op": "draw", "trigger": "turn_start", "value": 1}
+    ]
+  },
+  {
+    "id": "ember_totem",
+    "name": "余烬图腾",
+    "description": "攻击牌额外造成 2 伤害。",
+    "rarity": "rare",
+    "effects": [
+      {"op": "modify_damage", "trigger": "attack", "value": 2}
+    ]
+  },
+  {
+    "id": "spell_core",
+    "name": "咒核",
+    "description": "法术牌额外造成 2 伤害。",
+    "rarity": "rare",
+    "effects": [
+      {"op": "modify_damage", "trigger": "spell", "value": 2}
+    ]
+  },
+  {
+    "id": "spined_idol",
+    "name": "荆刺偶像",
+    "description": "战斗开始时获得 2 层荆棘。",
+    "rarity": "rare",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "thorns", "value": 2}
+    ]
+  },
+  {
+    "id": "aegis_shard",
+    "name": "壁垒碎片",
+    "description": "受到伤害时减少 2 点。",
+    "rarity": "rare",
+    "effects": [
+      {"op": "modify_taken_damage", "trigger": "incoming_damage", "value": -2}
+    ]
+  },
+  {
+    "id": "war_banner_awakened",
+    "name": "觉醒战旗",
+    "description": "战斗开始时获得 2 层力量。",
+    "rarity": "upgraded",
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "self", "status": "strength", "value": 2}
+    ]
+  },
+  {
+    "id": "crystal_hourglass_awakened",
+    "name": "觉醒水晶沙漏",
+    "description": "每回合开始时抽 2 张牌。",
+    "rarity": "upgraded",
+    "effects": [
+      {"op": "draw", "trigger": "turn_start", "value": 2}
+    ]
+  },
+  {
+    "id": "ember_totem_awakened",
+    "name": "余烬图腾·炽核",
+    "description": "攻击牌额外造成 4 伤害。",
+    "rarity": "upgraded",
+    "effects": [
+      {"op": "modify_damage", "trigger": "attack", "value": 4}
+    ]
+  },
+  {
+    "id": "spell_core_awakened",
+    "name": "咒核·共鸣",
+    "description": "法术牌额外造成 4 伤害。",
+    "rarity": "upgraded",
+    "effects": [
+      {"op": "modify_damage", "trigger": "spell", "value": 4}
+    ]
+  },
+  {
+    "id": "formation_beacon",
+    "name": "阵列信标",
+    "description": "战斗开始时，全体友军获得 4 格挡。",
+    "rarity": "uncommon",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "trigger": "combat_start", "target": "all_allies", "value": 4}
+    ]
+  },
+  {
+    "id": "medic_satchel",
+    "name": "战地医包",
+    "description": "每回合结束时，全体友军恢复 1 生命。",
+    "rarity": "rare",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "heal", "trigger": "turn_end", "target": "all_allies", "value": 1}
+    ]
+  },
+  {
+    "id": "oath_censer",
+    "name": "誓约香炉",
+    "description": "战斗开始时，全体友军获得 1 层庇护。",
+    "rarity": "rare",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "all_allies", "status": "sheltered", "value": 1, "duration": 2}
+    ]
+  },
+  {
+    "id": "signal_drum",
+    "name": "信号战鼓",
+    "description": "每回合开始时，全体友军获得 2 格挡。",
+    "rarity": "uncommon",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "trigger": "turn_start", "target": "all_allies", "value": 2}
+    ]
+  },
+  {
+    "id": "harmony_standard",
+    "name": "协律军旗",
+    "description": "战斗开始时，全体友军获得 1 层力量。",
+    "rarity": "rare",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "apply_status", "trigger": "combat_start", "target": "all_allies", "status": "strength", "value": 1, "duration": 2}
+    ]
+  },
+  {
+    "id": "linked_bracers",
+    "name": "联结臂甲",
+    "description": "同一回合中第二名不同玩家行动后，全体友军获得 3 格挡。",
+    "rarity": "rare",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "block", "trigger": "team_combo", "target": "all_allies", "value": 3}
+    ]
+  },
+  {
+    "id": "hunt_contract",
+    "name": "围猎契约",
+    "description": "同一回合中第二名不同玩家行动后，全体敌人获得 1 层易伤。",
+    "rarity": "rare",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "apply_status", "trigger": "team_combo", "target": "all_enemies", "status": "vulnerable", "value": 1, "duration": 2}
+    ]
+  },
+  {
+    "id": "battlefield_manual",
+    "name": "协战手册",
+    "description": "同一回合中第二名不同玩家行动后，抽 1 张牌。",
+    "rarity": "rare",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "draw", "trigger": "team_combo", "value": 1}
+    ]
+  },
+  {
+    "id": "relay_rations",
+    "name": "接力口粮",
+    "description": "同一回合中第二名不同玩家行动后，全体友军恢复 2 生命。",
+    "rarity": "rare",
+    "flags": ["coop_only"],
+    "effects": [
+      {"op": "heal", "trigger": "team_combo", "target": "all_allies", "value": 2}
+    ]
+  }
+]
