@@ -48,6 +48,36 @@ func splitAdaptiveColumns(totalWidth, preferredLeft, minLeft, minRight, gap int)
 	return left, right, false
 }
 
+func splitFramedAdaptiveColumns(totalWidth, preferredLeft, minLeft, minRight, gap, frameOverhead int) (int, int, bool) {
+	usableWidth := totalWidth - frameOverhead
+	if usableWidth <= 0 {
+		usableWidth = totalWidth
+	}
+	return splitAdaptiveColumns(usableWidth, preferredLeft, minLeft, minRight, gap)
+}
+
+func splitFramedThreeColumns(totalWidth, minLeft, minMiddle, minRight, gap, frameOverhead int) (int, int, int, bool) {
+	if totalWidth < minLeft+minMiddle+minRight+gap*2+frameOverhead {
+		width := max(max(minLeft, minMiddle), minRight)
+		width = max(width, totalWidth)
+		return width, width, width, true
+	}
+	usableWidth := totalWidth - frameOverhead
+	if usableWidth <= 0 {
+		usableWidth = totalWidth
+	}
+	leftWidth := max(minLeft, usableWidth/4)
+	middleWidth := max(minMiddle, usableWidth/4)
+	rightWidth := max(minRight, usableWidth-leftWidth-middleWidth-gap*2)
+	if rightWidth < minRight {
+		rightWidth = minRight
+		remaining := usableWidth - rightWidth - gap*2
+		leftWidth = max(minLeft, remaining/2)
+		middleWidth = max(minMiddle, remaining-leftWidth)
+	}
+	return leftWidth, middleWidth, rightWidth, false
+}
+
 func panelContentWidth(panelWidth int) int {
 	return max(12, panelWidth-6)
 }
