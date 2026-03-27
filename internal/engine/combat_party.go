@@ -54,6 +54,11 @@ func NewCombatForPartyWithEnemies(lib *content.Library, players []PlayerState, e
 	scaled := ScaleEncounterGroupForParty(encounters, len(players))
 	scaledBasis := ScaleEncounterForParty(rewardBasis, len(players))
 	state := NewCombatWithEnemies(lib, players[0], scaled, scaledBasis, seed)
+	state.SeatPlayers = append([]PlayerState{}, players...)
+	state.Seats = make([]CombatSeatState, 0, len(players))
+	for i, player := range players {
+		state.Seats = append(state.Seats, buildCombatSeat(player, seed+int64((i+1)*9973)))
+	}
 	if len(players) > 1 {
 		state.Coop = CombatCoopState{
 			Enabled:       true,
@@ -71,33 +76,36 @@ func NewCombatForPartyWithEnemies(lib *content.Library, players []PlayerState, e
 				Statuses:  map[string]Status{},
 			})
 		}
-		applyLatePartyCombatStartEffects(lib, players[0], state)
+		syncLegacySeat0(state)
+		applyLatePartyCombatStartEffects(lib, players, state)
 	}
 	return state
 }
 
-func applyLatePartyCombatStartEffects(lib *content.Library, player PlayerState, combat *CombatState) {
-	for _, effect := range passiveEffectsForSide(lib, player, combat, sidePlayer, 0) {
-		if !matchesPassiveWindow(effect.Trigger, sidePlayer, "combat_start") {
-			continue
-		}
-		if effect.Target != "all_allies" {
-			continue
-		}
-		for allyIndex := range combat.Allies {
-			target := CombatTarget{Kind: CombatTargetAlly, Index: allyIndex + 1}
-			switch effect.Op {
-			case "block":
-				amount := applyBlockModifiers(combat, target, effect.Value)
-				combat.Allies[allyIndex].Block += amount
-			case "heal":
-				combat.Allies[allyIndex].HP = min(combat.Allies[allyIndex].MaxHP, combat.Allies[allyIndex].HP+effect.Value)
-			case "apply_status":
-				applyStatus(&combat.Allies[allyIndex], effect.Status, effect.Value, effect.Duration)
-			case "cleanse_status":
-				cleanseStatus(&combat.Allies[allyIndex], effect.Status, effect.Value)
-			default:
-				combat.log("被动补触发失败: unsupported all_allies late trigger " + effect.Op)
+func applyLatePartyCombatStartEffects(lib *content.Library, players []PlayerState, combat *CombatState) {
+	for seatIndex, player := range players {
+		for _, effect := range passiveEffectsForSide(lib, player, combat, sidePlayer, seatIndex) {
+			if !matchesPassiveWindow(effect.Trigger, sidePlayer, "combat_start") {
+				continue
+			}
+			if effect.Target != "all_allies" {
+				continue
+			}
+			for allyIndex := range combat.Allies {
+				target := CombatTarget{Kind: CombatTargetAlly, Index: allyIndex + 1}
+				switch effect.Op {
+				case "block":
+					amount := applyBlockModifiers(combat, target, effect.Value)
+					combat.Allies[allyIndex].Block += amount
+				case "heal":
+					combat.Allies[allyIndex].HP = min(combat.Allies[allyIndex].MaxHP, combat.Allies[allyIndex].HP+effect.Value)
+				case "apply_status":
+					applyStatus(&combat.Allies[allyIndex], effect.Status, effect.Value, effect.Duration)
+				case "cleanse_status":
+					cleanseStatus(&combat.Allies[allyIndex], effect.Status, effect.Value)
+				default:
+					combat.log("被动补触发失败: unsupported all_allies late trigger " + effect.Op)
+				}
 			}
 		}
 	}
@@ -155,6 +163,10 @@ func PartyActors(combat *CombatState) []*CombatActor {
 	return actors
 }
 
+func ActorForSeat(combat *CombatState, seatIndex int) *CombatActor {
+	return partyActorBySeat(combat, seatIndex)
+}
+
 func PartyMembersView(combat *CombatState) []CombatActor {
 	members := make([]CombatActor, 0, 1+len(combat.Allies))
 	members = append(members, combat.Player)
@@ -172,17 +184,39 @@ func LivingPartyActors(combat *CombatState) []*CombatActor {
 	return living
 }
 
-func DealPlayerSideDamage(combat *CombatState, amount int) int {
+type playerSideDamageResult struct {
+	Taken       int
+	SeatBlocked []int
+	SeatTaken   []int
+}
+
+func dealPlayerSideDamageDetailed(combat *CombatState, amount int) playerSideDamageResult {
+	result := playerSideDamageResult{}
 	if amount <= 0 {
-		return 0
+		return result
 	}
 
 	living := LivingPartyActors(combat)
 	if len(living) == 0 {
-		return 0
+		return result
 	}
+	result.SeatBlocked = make([]int, 1+len(combat.Allies))
+	result.SeatTaken = make([]int, 1+len(combat.Allies))
 	if len(living) == 1 {
-		return dealDamage(living[0], amount)
+		seatIndex := 0
+		if living[0] != &combat.Player {
+			for i := range combat.Allies {
+				if living[0] == &combat.Allies[i] {
+					seatIndex = i + 1
+					break
+				}
+			}
+		}
+		blocked := min(living[0].Block, amount)
+		result.SeatBlocked[seatIndex] = blocked
+		result.SeatTaken[seatIndex] = dealDamage(living[0], amount)
+		result.Taken = result.SeatTaken[seatIndex]
+		return result
 	}
 
 	priority := slices.Clone(living)
@@ -206,10 +240,16 @@ func DealPlayerSideDamage(combat *CombatState, amount int) int {
 		}
 		absorbed := min(actor.Block, remaining)
 		actor.Block -= absorbed
+		for seatIndex, candidate := range PartyActors(combat) {
+			if candidate == actor {
+				result.SeatBlocked[seatIndex] += absorbed
+				break
+			}
+		}
 		remaining -= absorbed
 	}
 	if remaining <= 0 {
-		return 0
+		return result
 	}
 
 	weights := make([]int, 0, len(living))
@@ -231,9 +271,21 @@ func DealPlayerSideDamage(combat *CombatState, amount int) int {
 			share = leftover
 		}
 		leftover -= share
-		damageTaken += loseHP(actor, share)
+		taken := loseHP(actor, share)
+		damageTaken += taken
+		for seatIndex, candidate := range PartyActors(combat) {
+			if candidate == actor {
+				result.SeatTaken[seatIndex] += taken
+				break
+			}
+		}
 	}
-	return damageTaken
+	result.Taken = damageTaken
+	return result
+}
+
+func DealPlayerSideDamage(combat *CombatState, amount int) int {
+	return dealPlayerSideDamageDetailed(combat, amount).Taken
 }
 
 func compareInt(a, b int) int {

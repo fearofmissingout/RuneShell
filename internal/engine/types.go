@@ -52,8 +52,9 @@ type EquipmentSlots struct {
 }
 
 type DeckCard struct {
-	CardID   string `json:"card_id"`
-	Upgraded bool   `json:"upgraded"`
+	CardID   string        `json:"card_id"`
+	Upgraded bool          `json:"upgraded"`
+	Augments []CardAugment `json:"augments,omitempty"`
 }
 
 type PlayerState struct {
@@ -91,33 +92,52 @@ type MapGraph struct {
 	Floors [][]Node `json:"floors"`
 }
 
+type CombatMetrics struct {
+	DamageDealt    int `json:"damage_dealt,omitempty"`
+	StatusApplied  int `json:"status_applied,omitempty"`
+	StatusReceived int `json:"status_received,omitempty"`
+	DamageBlocked  int `json:"damage_blocked,omitempty"`
+	DamageTaken    int `json:"damage_taken,omitempty"`
+}
+
 type RunStats struct {
-	CombatsWon    int `json:"combats_won"`
-	ElitesWon     int `json:"elites_won"`
-	BossesWon     int `json:"bosses_won"`
-	ClearedFloors int `json:"cleared_floors"`
+	CombatsWon    int           `json:"combats_won"`
+	ElitesWon     int           `json:"elites_won"`
+	BossesWon     int           `json:"bosses_won"`
+	ClearedFloors int           `json:"cleared_floors"`
+	CombatTurns   int           `json:"combat_turns,omitempty"`
+	Metrics       CombatMetrics `json:"metrics,omitempty"`
 }
 
 type RunCheckpoint struct {
-	Screen             string               `json:"screen,omitempty"`
-	CurrentNode        *Node                `json:"current_node,omitempty"`
-	Combat             *CombatState         `json:"combat,omitempty"`
-	Reward             *RewardState         `json:"reward,omitempty"`
-	EquipOffer         *EquipmentOfferState `json:"equip_offer,omitempty"`
-	EventState         *EventState          `json:"event_state,omitempty"`
-	ShopState          *ShopState           `json:"shop_state,omitempty"`
-	RestLog            []string             `json:"rest_log,omitempty"`
-	EquipFrom          string               `json:"equip_from,omitempty"`
-	RewardCard         string               `json:"reward_card,omitempty"`
-	ShopOfferID        string               `json:"shop_offer_id,omitempty"`
-	EventChoice        string               `json:"event_choice,omitempty"`
-	DeckActionMode     string               `json:"deck_action_mode,omitempty"`
-	DeckActionTitle    string               `json:"deck_action_title,omitempty"`
-	DeckActionSubtitle string               `json:"deck_action_subtitle,omitempty"`
-	DeckActionIndexes  []int                `json:"deck_action_indexes,omitempty"`
-	DeckActionPrice    int                  `json:"deck_action_price,omitempty"`
-	CombatPane         int                  `json:"combat_pane,omitempty"`
-	CombatTarget       CombatTarget         `json:"combat_target,omitempty"`
+	Screen               string               `json:"screen,omitempty"`
+	CurrentNode          *Node                `json:"current_node,omitempty"`
+	Combat               *CombatState         `json:"combat,omitempty"`
+	Reward               *RewardState         `json:"reward,omitempty"`
+	EquipOffer           *EquipmentOfferState `json:"equip_offer,omitempty"`
+	EventState           *EventState          `json:"event_state,omitempty"`
+	ShopState            *ShopState           `json:"shop_state,omitempty"`
+	RestLog              []string             `json:"rest_log,omitempty"`
+	EquipFrom            string               `json:"equip_from,omitempty"`
+	RewardCard           string               `json:"reward_card,omitempty"`
+	ShopOfferID          string               `json:"shop_offer_id,omitempty"`
+	EventChoice          string               `json:"event_choice,omitempty"`
+	DeckActionMode       string               `json:"deck_action_mode,omitempty"`
+	DeckActionTitle      string               `json:"deck_action_title,omitempty"`
+	DeckActionSubtitle   string               `json:"deck_action_subtitle,omitempty"`
+	DeckActionIndexes    []int                `json:"deck_action_indexes,omitempty"`
+	DeckActionPrice      int                  `json:"deck_action_price,omitempty"`
+	DeckActionEffect     *content.Effect      `json:"deck_action_effect,omitempty"`
+	DeckActionTakeEquip  bool                 `json:"deck_action_take_equip,omitempty"`
+	CombatPane           int                  `json:"combat_pane,omitempty"`
+	CombatTopPage        int                  `json:"combat_top_page,omitempty"`
+	CombatLogPage        int                  `json:"combat_log_page,omitempty"`
+	CombatPotionIndex    int                  `json:"combat_potion_index,omitempty"`
+	CombatPotionMode     bool                 `json:"combat_potion_mode,omitempty"`
+	CombatTarget         CombatTarget         `json:"combat_target,omitempty"`
+	PendingPotionID      string               `json:"pending_potion_id,omitempty"`
+	PendingPotionResume  string               `json:"pending_potion_resume,omitempty"`
+	PendingPotionAdvance bool                 `json:"pending_potion_advance,omitempty"`
 }
 
 type RunState struct {
@@ -146,6 +166,7 @@ type Status struct {
 type RuntimeCard struct {
 	ID       string
 	Upgraded bool
+	Augments []CardAugment
 }
 
 type CombatActor struct {
@@ -197,6 +218,23 @@ type CombatLogEntry struct {
 	Text string
 }
 
+type PendingCardRepeat struct {
+	Count int    `json:"count"`
+	Tag   string `json:"tag,omitempty"`
+}
+
+type CombatSeatState struct {
+	DrawPile           []RuntimeCard       `json:"draw_pile,omitempty"`
+	Discard            []RuntimeCard       `json:"discard,omitempty"`
+	Exhaust            []RuntimeCard       `json:"exhaust,omitempty"`
+	Hand               []RuntimeCard       `json:"hand,omitempty"`
+	Potions            []string            `json:"potions,omitempty"`
+	PotionsUsed        []string            `json:"potions_used,omitempty"`
+	NextCardRepeats    int                 `json:"next_card_repeats,omitempty"`
+	PendingCardRepeats []PendingCardRepeat `json:"pending_card_repeats,omitempty"`
+	Metrics            CombatMetrics       `json:"metrics,omitempty"`
+}
+
 type RewardState struct {
 	Gold           int
 	CardChoices    []content.CardDef
@@ -204,6 +242,16 @@ type RewardState struct {
 	RelicID        string
 	EquipmentID    string
 	SourceNodeKind NodeKind
+}
+
+type DeckActionPlan struct {
+	Mode          string
+	Title         string
+	Subtitle      string
+	Indexes       []int
+	Price         int
+	Effect        *content.Effect
+	TakeEquipment bool
 }
 
 type EquipmentOfferState struct {
@@ -219,6 +267,7 @@ type EquipmentOfferState struct {
 type CombatState struct {
 	Player      CombatActor
 	Allies      []CombatActor
+	SeatPlayers []PlayerState
 	Enemy       CombatEnemy
 	Enemies     []CombatEnemy
 	Encounter   content.EncounterDef
@@ -233,6 +282,7 @@ type CombatState struct {
 	Log         []CombatLogEntry
 	Reward      RewardState
 	PotionsUsed []string
+	Seats       []CombatSeatState
 	Coop        CombatCoopState
 }
 

@@ -100,6 +100,191 @@ func TestPotionRelicEquipmentStack(t *testing.T) {
 	}
 }
 
+func TestReplyAugmentRepeatsAttachedCard(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{
+		ClassID:   "vanguard",
+		Name:      "tester",
+		MaxHP:     80,
+		HP:        80,
+		MaxEnergy: 3,
+		Deck:      []DeckCard{{CardID: "slash"}},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         30,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombat(lib, player, encounter, 15)
+	combat.Hand = []RuntimeCard{{ID: "slash"}}
+	combat.DrawPile = nil
+	refreshSeat0FromLegacy(combat)
+	if err := AddCombatCardAugment(combat, 0, CombatCardPileHand, 0, ReplyCardAugment(CardEffectScopeCombat, 1)); err != nil {
+		t.Fatalf("AddCombatCardAugment() error = %v", err)
+	}
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard() error = %v", err)
+	}
+	if want := 18; combat.Enemy.HP != want {
+		t.Fatalf("expected reply augment to repeat slash and leave enemy HP %d, got %d", want, combat.Enemy.HP)
+	}
+}
+
+func TestRunScopeCardAugmentCarriesIntoCombat(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{
+		ClassID:   "vanguard",
+		Name:      "tester",
+		MaxHP:     80,
+		HP:        80,
+		MaxEnergy: 3,
+		Deck:      []DeckCard{{CardID: "slash"}},
+	}
+	if err := AddRunCardAugment(&player, 0, ReplyCardAugment(CardEffectScopeRun, 1)); err != nil {
+		t.Fatalf("AddRunCardAugment() error = %v", err)
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         30,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombat(lib, player, encounter, 17)
+	if got := len(combat.DrawPile); got != 1 {
+		t.Fatalf("expected one runtime card copied from deck, got %d", got)
+	}
+	if got := len(combat.DrawPile[0].Augments); got != 1 {
+		t.Fatalf("expected run augment to copy into runtime card, got %d", got)
+	}
+	combat.Hand = []RuntimeCard{combat.DrawPile[0]}
+	combat.DrawPile = nil
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard() error = %v", err)
+	}
+	if want := 18; combat.Enemy.HP != want {
+		t.Fatalf("expected run augment to stay active in combat and leave enemy HP %d, got %d", want, combat.Enemy.HP)
+	}
+}
+
+func TestTurnScopedCardAugmentExpiresAtTurnEnd(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{
+		ClassID:   "vanguard",
+		Name:      "tester",
+		MaxHP:     80,
+		HP:        80,
+		MaxEnergy: 3,
+		Deck:      []DeckCard{{CardID: "slash"}},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         30,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombat(lib, player, encounter, 19)
+	combat.Hand = []RuntimeCard{{ID: "slash"}}
+	combat.DrawPile = nil
+	refreshSeat0FromLegacy(combat)
+	if err := AddCombatCardAugment(combat, 0, CombatCardPileHand, 0, ReplyCardAugment(CardEffectScopeTurn, 1)); err != nil {
+		t.Fatalf("AddCombatCardAugment() error = %v", err)
+	}
+
+	EndPlayerTurn(lib, player, combat)
+	if got := len(combat.Discard); got != 1 {
+		t.Fatalf("expected discarded hand after turn end, got %d", got)
+	}
+	if got := len(combat.Discard[0].Augments); got != 0 {
+		t.Fatalf("expected turn-scoped augment to expire, got %#v", combat.Discard[0].Augments)
+	}
+}
+
+func TestGenericCardAugmentCanGrantDrawAndEnergy(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{
+		ClassID:   "vanguard",
+		Name:      "tester",
+		MaxHP:     80,
+		HP:        80,
+		MaxEnergy: 3,
+		Deck:      []DeckCard{{CardID: "slash"}, {CardID: "guard"}},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         30,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombat(lib, player, encounter, 41)
+	combat.Hand = []RuntimeCard{{ID: "slash"}}
+	combat.DrawPile = []RuntimeCard{{ID: "guard"}}
+	refreshSeat0FromLegacy(combat)
+	augment := NewCardAugment("charged_cantrip", CardEffectScopeCombat,
+		content.Effect{Op: "draw", Value: 1},
+		content.Effect{Op: "gain_energy", Value: 1},
+	)
+	if err := AddCombatCardAugment(combat, 0, CombatCardPileHand, 0, augment); err != nil {
+		t.Fatalf("AddCombatCardAugment() error = %v", err)
+	}
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard() error = %v", err)
+	}
+	if want := 3; combat.Player.Energy != want {
+		t.Fatalf("expected slash to refund one energy and end at %d, got %d", want, combat.Player.Energy)
+	}
+	if got := len(combat.Hand); got != 1 || combat.Hand[0].ID != "guard" {
+		t.Fatalf("expected augment to draw guard into hand, got %#v", combat.Hand)
+	}
+}
+
 func TestEnemyIntentTargetsOpponent(t *testing.T) {
 	lib, err := content.LoadEmbedded()
 	if err != nil {
@@ -401,5 +586,346 @@ func TestPlayCardWithTargetCanGrantBlockToAlly(t *testing.T) {
 	}
 	if want := 5; combat.Allies[0].Block != want {
 		t.Fatalf("expected ally block %d, got %d", want, combat.Allies[0].Block)
+	}
+}
+
+func TestRepeatNextCardQueuesAndConsumesOnPlay(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{
+		ClassID:   "vanguard",
+		Name:      "tester",
+		MaxHP:     80,
+		HP:        80,
+		MaxEnergy: 3,
+		Deck:      []DeckCard{{CardID: "slash"}},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         30,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombat(lib, player, encounter, 17)
+	combat.Hand = []RuntimeCard{{ID: "slash"}}
+	combat.DrawPile = nil
+
+	if err := ApplyExternalCombatEffect(lib, player, combat, content.Effect{Op: "repeat_next_card", Value: 2}, CombatTarget{}); err != nil {
+		t.Fatalf("ApplyExternalCombatEffect() error = %v", err)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 2 {
+		t.Fatalf("expected pending repeats 2, got %d", got)
+	}
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard() error = %v", err)
+	}
+
+	if want := 12; combat.Enemy.HP != want {
+		t.Fatalf("expected enemy HP %d after repeated slash, got %d", want, combat.Enemy.HP)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 0 {
+		t.Fatalf("expected repeats to be consumed, got %d", got)
+	}
+	if want := 2; combat.Player.Energy != want {
+		t.Fatalf("expected card cost paid once and energy %d, got %d", want, combat.Player.Energy)
+	}
+	if got := len(combat.Discard); got != 1 {
+		t.Fatalf("expected card to be discarded once, got %d", got)
+	}
+}
+
+func TestPotionEchoAppliesRepeatNextCard(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{
+		ClassID:   "vanguard",
+		Name:      "tester",
+		MaxHP:     80,
+		HP:        80,
+		MaxEnergy: 3,
+		Deck:      []DeckCard{{CardID: "slash"}},
+		Potions:   []string{"potion_echo"},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         30,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombat(lib, player, encounter, 23)
+	combat.Hand = []RuntimeCard{{ID: "slash"}}
+	combat.DrawPile = nil
+
+	if err := UsePotion(lib, player, combat, "potion_echo"); err != nil {
+		t.Fatalf("UsePotion() error = %v", err)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 2 {
+		t.Fatalf("expected echo potion to queue 2 repeats, got %d", got)
+	}
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard() error = %v", err)
+	}
+	if want := 12; combat.Enemy.HP != want {
+		t.Fatalf("expected repeated slash to reduce enemy HP to %d, got %d", want, combat.Enemy.HP)
+	}
+}
+
+func TestFilteredRepeatWaitsForMatchingCardTag(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{
+		ClassID:   "arcanist",
+		Name:      "tester",
+		MaxHP:     70,
+		HP:        70,
+		MaxEnergy: 3,
+		Deck:      []DeckCard{{CardID: "spark"}, {CardID: "slash"}},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         40,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombat(lib, player, encounter, 29)
+	combat.Hand = []RuntimeCard{{ID: "spark"}, {ID: "slash"}}
+	combat.DrawPile = nil
+
+	if err := ApplyExternalCombatEffect(lib, player, combat, content.Effect{Op: "repeat_next_card", Value: 1, Tag: "attack"}, CombatTarget{}); err != nil {
+		t.Fatalf("ApplyExternalCombatEffect() error = %v", err)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 1 {
+		t.Fatalf("expected pending filtered repeat 1, got %d", got)
+	}
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard(spark) error = %v", err)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 1 {
+		t.Fatalf("expected attack repeat to survive non-attack card, got %d", got)
+	}
+	if want := 35; combat.Enemy.HP != want {
+		t.Fatalf("expected spark to resolve once and enemy HP %d, got %d", want, combat.Enemy.HP)
+	}
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard(slash) error = %v", err)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 0 {
+		t.Fatalf("expected attack repeat to be consumed by slash, got %d", got)
+	}
+	if want := 23; combat.Enemy.HP != want {
+		t.Fatalf("expected slash to resolve twice and enemy HP %d, got %d", want, combat.Enemy.HP)
+	}
+}
+
+func TestPotionArcaneEchoOnlyRepeatsSpell(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{
+		ClassID:   "arcanist",
+		Name:      "tester",
+		MaxHP:     70,
+		HP:        70,
+		MaxEnergy: 3,
+		Deck:      []DeckCard{{CardID: "slash"}, {CardID: "spark"}},
+		Potions:   []string{"potion_arcane_echo"},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         40,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombat(lib, player, encounter, 31)
+	combat.Hand = []RuntimeCard{{ID: "slash"}, {ID: "spark"}}
+	combat.DrawPile = nil
+
+	if err := UsePotion(lib, player, combat, "potion_arcane_echo"); err != nil {
+		t.Fatalf("UsePotion() error = %v", err)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 1 {
+		t.Fatalf("expected arcane echo to queue 1 repeat, got %d", got)
+	}
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard(slash) error = %v", err)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 1 {
+		t.Fatalf("expected spell-only repeat to survive attack card, got %d", got)
+	}
+
+	if err := PlayCard(lib, player, combat, 0); err != nil {
+		t.Fatalf("PlayCard(spark) error = %v", err)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 0 {
+		t.Fatalf("expected spell-only repeat to be consumed, got %d", got)
+	}
+	if want := 24; combat.Enemy.HP != want {
+		t.Fatalf("expected slash once and spark twice to leave enemy HP %d, got %d", want, combat.Enemy.HP)
+	}
+}
+
+func TestRepeatNextCardStaysSeatLocal(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	players := []PlayerState{
+		{ClassID: "vanguard", Name: "lead", MaxHP: 80, HP: 80, MaxEnergy: 3, Deck: []DeckCard{{CardID: "slash"}}},
+		{ClassID: "vanguard", Name: "ally", MaxHP: 80, HP: 80, MaxEnergy: 3, Deck: []DeckCard{{CardID: "slash"}}},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         40,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombatForParty(lib, players, encounter, 19)
+	combat.Seats[0].Hand = []RuntimeCard{{ID: "slash"}}
+	combat.Seats[1].Hand = []RuntimeCard{{ID: "slash"}}
+	syncLegacySeat0(combat)
+
+	if err := ApplySeatExternalCombatEffect(lib, players[1], combat, 1, content.Effect{Op: "repeat_next_card", Value: 2}, CombatTarget{}); err != nil {
+		t.Fatalf("ApplySeatExternalCombatEffect() error = %v", err)
+	}
+
+	if err := PlaySeatCardWithTarget(lib, players[0], combat, 0, 0, CombatTarget{Kind: CombatTargetEnemy, Index: 0}); err != nil {
+		t.Fatalf("PlaySeatCardWithTarget(seat0) error = %v", err)
+	}
+	if want := 74; combat.Enemies[0].HP != want {
+		t.Fatalf("expected seat 0 normal damage to enemy HP %d, got %d", want, combat.Enemies[0].HP)
+	}
+
+	if err := PlaySeatCardWithTarget(lib, players[1], combat, 1, 0, CombatTarget{Kind: CombatTargetEnemy, Index: 0}); err != nil {
+		t.Fatalf("PlaySeatCardWithTarget(seat1) error = %v", err)
+	}
+	if want := 56; combat.Enemies[0].HP != want {
+		t.Fatalf("expected seat 1 repeated damage to enemy HP %d, got %d", want, combat.Enemies[0].HP)
+	}
+	if got := PendingNextCardRepeats(combat, 0); got != 0 {
+		t.Fatalf("expected seat 0 repeats to stay 0, got %d", got)
+	}
+	if got := PendingNextCardRepeats(combat, 1); got != 0 {
+		t.Fatalf("expected seat 1 repeats to be consumed, got %d", got)
+	}
+}
+
+func TestPartyCombatSeatActionsStayIsolated(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	players := []PlayerState{
+		{
+			ClassID:   "vanguard",
+			Name:      "lead",
+			MaxHP:     80,
+			HP:        80,
+			MaxEnergy: 3,
+			Deck:      []DeckCard{{CardID: "slash"}},
+		},
+		{
+			ClassID:   "arcanist",
+			Name:      "ally",
+			MaxHP:     70,
+			HP:        70,
+			MaxEnergy: 3,
+			Deck:      []DeckCard{{CardID: "guard"}},
+			Potions:   []string{"potion_fury"},
+		},
+	}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         40,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{
+			{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}},
+		},
+	}
+
+	combat := NewCombatForParty(lib, players, encounter, 13)
+	combat.Seats[0].Hand = []RuntimeCard{{ID: "slash"}}
+	combat.Seats[1].Hand = []RuntimeCard{{ID: "guard"}}
+	combat.Seats[0].Potions = nil
+	combat.Seats[1].Potions = []string{"potion_fury"}
+	syncLegacySeat0(combat)
+
+	if err := PlaySeatCardWithTarget(lib, players[0], combat, 0, 0, CombatTarget{Kind: CombatTargetEnemy, Index: 0}); err != nil {
+		t.Fatalf("PlaySeatCardWithTarget() error = %v", err)
+	}
+	if got := len(combat.Seats[0].Hand); got != 0 {
+		t.Fatalf("expected seat 0 hand to be consumed, got %d", got)
+	}
+	if got := len(combat.Seats[1].Hand); got != 1 {
+		t.Fatalf("expected seat 1 hand to stay intact, got %d", got)
+	}
+
+	if err := UseSeatPotionWithTarget(lib, players[1], combat, 1, "potion_fury", CombatTarget{}); err != nil {
+		t.Fatalf("UseSeatPotionWithTarget() error = %v", err)
+	}
+	if got := len(combat.Seats[1].Potions); got != 0 {
+		t.Fatalf("expected seat 1 potion to be consumed, got %d", got)
+	}
+	if got := len(combat.Seats[0].Potions); got != 0 {
+		t.Fatalf("expected seat 0 potions to remain unchanged, got %d", got)
+	}
+	if got := len(combat.Seats[1].PotionsUsed); got != 1 || combat.Seats[1].PotionsUsed[0] != "potion_fury" {
+		t.Fatalf("expected seat 1 potion usage log, got %v", combat.Seats[1].PotionsUsed)
 	}
 }

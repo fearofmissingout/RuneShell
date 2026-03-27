@@ -2,8 +2,11 @@ package content
 
 type Effect struct {
 	Op       string   `json:"op"`
+	Name     string   `json:"name,omitempty"`
 	Value    int      `json:"value,omitempty"`
 	Target   string   `json:"target,omitempty"`
+	Scope    string   `json:"scope,omitempty"`
+	Selector string   `json:"selector,omitempty"`
 	Trigger  string   `json:"trigger,omitempty"`
 	Status   string   `json:"status,omitempty"`
 	Duration int      `json:"duration,omitempty"`
@@ -14,6 +17,7 @@ type Effect struct {
 	ItemType string   `json:"item_type,omitempty"`
 	Count    int      `json:"count,omitempty"`
 	Flags    []string `json:"flags,omitempty"`
+	Effects  []Effect `json:"effects,omitempty"`
 }
 
 type ClassDef struct {

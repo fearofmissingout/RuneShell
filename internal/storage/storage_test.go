@@ -46,6 +46,16 @@ func TestStoreSaveAndLoad(t *testing.T) {
 		DeckActionSubtitle: "price",
 		DeckActionIndexes:  []int{0, 1},
 		DeckActionPrice:    75,
+		DeckActionEffect: &content.Effect{
+			Op:       "augment_card",
+			Name:     "opening_spark",
+			Scope:    "turn",
+			Selector: "choose_upgradable",
+			Effects: []content.Effect{
+				{Op: "draw", Value: 1},
+			},
+		},
+		DeckActionTakeEquip: true,
 	}
 	if err := store.SaveRun(run); err != nil {
 		t.Fatalf("SaveRun() error = %v", err)
@@ -74,6 +84,12 @@ func TestStoreSaveAndLoad(t *testing.T) {
 	}
 	if loadedRun.Checkpoint.DeckActionMode != "shop_remove" || loadedRun.Checkpoint.DeckActionPrice != 75 {
 		t.Fatalf("expected deck action state to round-trip, got %#v", loadedRun.Checkpoint)
+	}
+	if loadedRun.Checkpoint.DeckActionEffect == nil || loadedRun.Checkpoint.DeckActionEffect.Scope != "turn" {
+		t.Fatalf("expected deck action effect to round-trip, got %#v", loadedRun.Checkpoint.DeckActionEffect)
+	}
+	if !loadedRun.Checkpoint.DeckActionTakeEquip {
+		t.Fatalf("expected deck action take-equipment flag to round-trip, got %#v", loadedRun.Checkpoint)
 	}
 }
 

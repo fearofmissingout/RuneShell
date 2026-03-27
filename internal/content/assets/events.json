@@ -72,6 +72,121 @@
     ]
   },
   {
+    "id": "inked_vellum",
+    "name": "符墨羊皮卷",
+    "description": "一卷仍在发热的羊皮纸，字迹会在你注视时自行重组。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "scribe_echo",
+        "label": "刻下回响符",
+        "description": "选择一张攻击牌，本局使其使用时额外抽 1 张牌。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "echo_script",
+            "scope": "run",
+            "selector": "choose",
+            "tag": "attack",
+            "effects": [
+              {"op": "draw", "value": 1}
+            ]
+          }
+        ]
+      },
+      {
+        "id": "flash_charge",
+        "label": "烙上瞬充纹",
+        "description": "选择一张可升级牌，下场战斗中它使用时额外获得 1 点能量。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "flash_charge",
+            "scope": "combat",
+            "selector": "choose_upgradable",
+            "effects": [
+              {"op": "gain_energy", "value": 1}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ember_tablet",
+    "name": "余烬碑文",
+    "description": "焦黑石板上的字迹仍在缓慢渗出热量，像在等待新的宿主。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "brand_cinders",
+        "label": "刻下余烬印",
+        "description": "选择一张攻击牌，本局使其命中时额外施加 2 层燃烧。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "ember_brand",
+            "scope": "run",
+            "selector": "choose",
+            "tag": "attack",
+            "effects": [
+              {"op": "apply_status", "target": "enemy", "status": "burn", "value": 2, "duration": 2}
+            ]
+          }
+        ]
+      },
+      {
+        "id": "bottle_heat",
+        "label": "封存火种",
+        "description": "获得一瓶战吼回响剂。",
+        "effects": [
+          {"op": "gain_potion", "item_id": "potion_battle_echo"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "bulwark_blueprint",
+    "name": "壁垒蓝图",
+    "description": "图纸上的线条严密而古板，每一笔都像是在强调秩序和节奏。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "trace_bastion",
+        "label": "描摹壁垒图",
+        "description": "选择一张技能牌，本局使其使用时额外获得 4 点格挡。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "bastion_trace",
+            "scope": "run",
+            "selector": "choose",
+            "tag": "skill",
+            "effects": [
+              {"op": "block", "value": 4}
+            ]
+          }
+        ]
+      },
+      {
+        "id": "opening_spark",
+        "label": "抄录先机式",
+        "description": "选择一张可升级牌，下场战斗的本回合里它使用时额外抽 1 张牌。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "opening_spark",
+            "scope": "turn",
+            "selector": "choose_upgradable",
+            "effects": [
+              {"op": "draw", "value": 1}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "arcane_echo",
     "name": "奥术回音",
     "description": "空气里残留着扭曲的咒文回响。",

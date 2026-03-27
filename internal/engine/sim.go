@@ -55,6 +55,7 @@ func RunSmoke(lib *content.Library, profile Profile, mode GameMode, classID stri
 			}
 			choice := chooseEventChoice(lib, run, eventState.Event)
 			takeEquipment := true
+			deckIndex := -1
 			for _, item := range eventState.Event.Choices {
 				if item.ID != choice {
 					continue
@@ -66,9 +67,19 @@ func RunSmoke(lib *content.Library, profile Profile, mode GameMode, classID stri
 					}
 					takeEquipment = ShouldTakeEquipmentOffer(offer)
 				}
+				plan, err := EventChoiceDeckActionPlan(lib, run, item, takeEquipment)
+				if err != nil {
+					return nil, err
+				}
+				if plan != nil {
+					deckIndex = chooseAugmentCardIndex(lib, run.Player.Deck, plan.Indexes)
+					if deckIndex < 0 {
+						return nil, fmt.Errorf("no valid deck card for event choice %s", choice)
+					}
+				}
 				break
 			}
-			if err := ResolveEventDecision(lib, run, &eventState, choice, takeEquipment); err != nil {
+			if err := ResolveEventDecisionWithDeckChoice(lib, run, &eventState, choice, takeEquipment, deckIndex); err != nil {
 				return nil, err
 			}
 			if err := AdvanceNonCombatNode(run, node); err != nil {
@@ -89,6 +100,7 @@ func RunSmoke(lib *content.Library, profile Profile, mode GameMode, classID stri
 					continue
 				}
 				shouldBuy := offer.Kind == "heal" || (offer.Kind == "card" && len(run.Player.Deck) < 26)
+				deckIndex := -1
 				if offer.Kind == "equipment" {
 					equipOffer, err := BuildEquipmentOffer(lib, run.Player, offer.ItemID, "shop", offer.Price)
 					if err != nil {
@@ -99,12 +111,23 @@ func RunSmoke(lib *content.Library, profile Profile, mode GameMode, classID stri
 				if offer.Kind == "remove" {
 					shouldBuy = shouldBuyRemoval(lib, run)
 				}
+				if offer.Kind == "service" {
+					plan, err := ShopOfferDeckActionPlan(lib, run, &shop, offer.ID)
+					if err != nil {
+						return nil, err
+					}
+					if plan != nil {
+						shouldBuy, deckIndex = shouldBuyAugmentService(lib, run.Player.Deck, offer.Price, *plan)
+					}
+				}
 				if shouldBuy {
 					applyErr := error(nil)
 					if offer.Kind == "equipment" {
 						applyErr = ApplyShopEquipmentPurchase(lib, run, &shop, offer.ID, true)
 					} else if offer.Kind == "remove" {
 						applyErr = ApplyShopCardRemoval(lib, run, &shop, offer.ID, chooseRemovalCardIndex(lib, run.Player.Deck))
+					} else if offer.Kind == "service" && deckIndex >= 0 {
+						applyErr = ApplyShopServiceWithDeckChoice(lib, run, &shop, offer.ID, deckIndex)
 					} else {
 						applyErr = ApplyShopPurchase(lib, run, &shop, offer.ID)
 					}
@@ -268,6 +291,10 @@ func chooseCardToPlay(lib *content.Library, combat *CombatState) int {
 				score += cleanseScore(effect, combat)
 			case "gain_energy":
 				score += 4
+			case "repeat_next_card":
+				score += max(1, effect.Value) * 5
+			case "reply":
+				score += max(1, effect.Value) * 6
 			}
 		}
 		if slices.Contains(def.Tags, "spell") {
@@ -286,11 +313,7 @@ func chooseCardToPlay(lib *content.Library, combat *CombatState) int {
 }
 
 func activeEffectsForCard(lib *content.Library, card RuntimeCard) []content.Effect {
-	def := lib.Cards[card.ID]
-	if card.Upgraded && len(def.UpgradeEffects) > 0 {
-		return def.UpgradeEffects
-	}
-	return def.Effects
+	return runtimeCardEffects(lib, card)
 }
 
 func nextEnemyAttackDamage(intent content.EnemyIntentDef) int {
@@ -339,6 +362,10 @@ func cardEffectScore(effects []content.Effect) int {
 			score += 2
 		case "gain_energy":
 			score += 4
+		case "repeat_next_card":
+			score += max(1, effect.Value) * 5
+		case "reply":
+			score += max(1, effect.Value) * 6
 		}
 	}
 	return score
@@ -366,6 +393,8 @@ func statusPlayScore(effect content.Effect, combat *CombatState) int {
 		return 7
 	case "burn":
 		return 7
+	case "poison":
+		return 7
 	case "regen":
 		if combat.Player.HP < combat.Player.MaxHP {
 			return 6
@@ -383,7 +412,7 @@ func cleanseScore(effect content.Effect, combat *CombatState) int {
 		return 1
 	}
 	switch effect.Status {
-	case "weak", "vulnerable", "frail", "burn":
+	case "weak", "vulnerable", "frail", "burn", "poison":
 		if statusStacks(combat.Player.Statuses, effect.Status) > 0 {
 			return 9
 		}
@@ -406,6 +435,8 @@ func statusRewardScore(effect content.Effect) int {
 	case "focus":
 		return 6
 	case "burn":
+		return 6
+	case "poison":
 		return 6
 	case "regen":
 		return 5
@@ -432,6 +463,55 @@ func chooseUpgradeCardIndex(lib *content.Library, deck []DeckCard) int {
 		}
 	}
 	return best
+}
+
+func chooseAugmentCardIndex(lib *content.Library, deck []DeckCard, candidateIndexes []int) int {
+	best := -1
+	bestScore := -999
+	for _, idx := range candidateIndexes {
+		if idx < 0 || idx >= len(deck) {
+			continue
+		}
+		card := deck[idx]
+		def, ok := lib.Cards[card.CardID]
+		if !ok {
+			continue
+		}
+		score := cardEffectScore(deckCardEffects(lib, card))*2 - def.Cost
+		if card.Upgraded {
+			score += 2
+		}
+		if slices.Contains(def.Tags, "attack") {
+			score++
+		}
+		if score > bestScore {
+			best = idx
+			bestScore = score
+		}
+	}
+	return best
+}
+
+func shouldBuyAugmentService(lib *content.Library, deck []DeckCard, price int, plan DeckActionPlan) (bool, int) {
+	if plan.Effect == nil {
+		return false, -1
+	}
+	bestIndex := chooseAugmentCardIndex(lib, deck, plan.Indexes)
+	if bestIndex < 0 || bestIndex >= len(deck) {
+		return false, -1
+	}
+	augment, err := CardAugmentFromEffect(*plan.Effect)
+	if err != nil {
+		return false, -1
+	}
+	score := max(4, cardEffectScore(deckCardEffects(lib, deck[bestIndex]))/2)
+	score += cardEffectScore(augment.Effects)
+	if augment.Scope == CardEffectScopeRun {
+		score += 4
+	} else if augment.Scope == CardEffectScopeCombat {
+		score += 2
+	}
+	return score*8 >= price, bestIndex
 }
 
 func shouldBuyRemoval(lib *content.Library, run *RunState) bool {
@@ -522,6 +602,19 @@ func chooseEventChoice(lib *content.Library, run *RunState, event content.EventD
 						score -= 4
 					}
 				}
+			case "augment_card":
+				indexes, err := augmentCardCandidateIndexes(lib, run.Player, effect)
+				if err == nil && len(indexes) > 0 {
+					augment, augmentErr := CardAugmentFromEffect(effect)
+					bestIndex := chooseAugmentCardIndex(lib, run.Player.Deck, indexes)
+					if augmentErr == nil && bestIndex >= 0 && bestIndex < len(run.Player.Deck) {
+						score += max(4, cardEffectScore(deckCardEffects(lib, run.Player.Deck[bestIndex]))/2)
+						score += cardEffectScore(augment.Effects)
+						if augment.Scope == CardEffectScopeRun {
+							score += 4
+						}
+					}
+				}
 			case "lose_hp":
 				score -= effect.Value / 2
 			}
@@ -541,6 +634,18 @@ func choosePotionToUse(lib *content.Library, player PlayerState, combat *CombatS
 			if combat.Player.HP < combat.Player.MaxHP*3/5 {
 				return i
 			}
+		case "potion_echo":
+			if turns == 0 && len(combat.Hand) > 0 && combat.Enemy.HP > combat.Enemy.MaxHP/2 {
+				return i
+			}
+		case "potion_battle_echo":
+			if turns == 0 && handContainsTag(lib, combat.Hand, "attack") {
+				return i
+			}
+		case "potion_arcane_echo":
+			if turns == 0 && handContainsTag(lib, combat.Hand, "spell") {
+				return i
+			}
 		case "potion_focus", "potion_fury":
 			if turns == 0 && combat.Enemy.HP > combat.Enemy.MaxHP/2 {
 				return i
@@ -552,4 +657,17 @@ func choosePotionToUse(lib *content.Library, player PlayerState, combat *CombatS
 		}
 	}
 	return -1
+}
+
+func handContainsTag(lib *content.Library, hand []RuntimeCard, tag string) bool {
+	for _, card := range hand {
+		def, ok := lib.Cards[card.ID]
+		if !ok {
+			continue
+		}
+		if slices.Contains(def.Tags, tag) {
+			return true
+		}
+	}
+	return false
 }

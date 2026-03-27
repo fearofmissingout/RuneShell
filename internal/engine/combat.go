@@ -23,6 +23,87 @@ type combatSourceRef struct {
 	index int
 }
 
+func buildCombatSeat(player PlayerState, seed int64) CombatSeatState {
+	draw := make([]RuntimeCard, 0, len(player.Deck))
+	for _, card := range player.Deck {
+		draw = append(draw, RuntimeCard{ID: card.CardID, Upgraded: card.Upgraded, Augments: cloneCardAugments(card.Augments)})
+	}
+	rng := rand.New(rand.NewSource(seed))
+	rng.Shuffle(len(draw), func(i, j int) {
+		draw[i], draw[j] = draw[j], draw[i]
+	})
+	return CombatSeatState{
+		DrawPile: draw,
+		Potions:  append([]string{}, player.Potions...),
+	}
+}
+
+func ensureCombatSeats(combat *CombatState) {
+	if combat == nil || len(combat.Seats) > 0 {
+		return
+	}
+	combat.Seats = []CombatSeatState{{
+		DrawPile:    append([]RuntimeCard{}, combat.DrawPile...),
+		Discard:     append([]RuntimeCard{}, combat.Discard...),
+		Exhaust:     append([]RuntimeCard{}, combat.Exhaust...),
+		Hand:        append([]RuntimeCard{}, combat.Hand...),
+		PotionsUsed: append([]string{}, combat.PotionsUsed...),
+	}}
+}
+
+func combatSeat(combat *CombatState, seatIndex int) *CombatSeatState {
+	ensureCombatSeats(combat)
+	if combat == nil || seatIndex < 0 || seatIndex >= len(combat.Seats) {
+		return nil
+	}
+	return &combat.Seats[seatIndex]
+}
+
+func syncLegacySeat0(combat *CombatState) {
+	ensureCombatSeats(combat)
+	if combat == nil || len(combat.Seats) == 0 {
+		return
+	}
+	seat := combat.Seats[0]
+	combat.DrawPile = append([]RuntimeCard{}, seat.DrawPile...)
+	combat.Discard = append([]RuntimeCard{}, seat.Discard...)
+	combat.Exhaust = append([]RuntimeCard{}, seat.Exhaust...)
+	combat.Hand = append([]RuntimeCard{}, seat.Hand...)
+	combat.PotionsUsed = append([]string{}, seat.PotionsUsed...)
+}
+
+func refreshSeat0FromLegacy(combat *CombatState) {
+	ensureCombatSeats(combat)
+	if combat == nil || len(combat.Seats) == 0 {
+		return
+	}
+	combat.Seats[0].DrawPile = append([]RuntimeCard{}, combat.DrawPile...)
+	combat.Seats[0].Discard = append([]RuntimeCard{}, combat.Discard...)
+	combat.Seats[0].Exhaust = append([]RuntimeCard{}, combat.Exhaust...)
+	combat.Seats[0].Hand = append([]RuntimeCard{}, combat.Hand...)
+	combat.Seats[0].PotionsUsed = append([]string{}, combat.PotionsUsed...)
+}
+
+func partyActorBySeat(combat *CombatState, seatIndex int) *CombatActor {
+	if combat == nil {
+		return nil
+	}
+	if seatIndex <= 0 {
+		return &combat.Player
+	}
+	if seatIndex-1 >= 0 && seatIndex-1 < len(combat.Allies) {
+		return &combat.Allies[seatIndex-1]
+	}
+	return nil
+}
+
+func combatPlayerStateForSeat(combat *CombatState, fallback PlayerState, seatIndex int) PlayerState {
+	if combat != nil && seatIndex >= 0 && seatIndex < len(combat.SeatPlayers) {
+		return combat.SeatPlayers[seatIndex]
+	}
+	return fallback
+}
+
 func NewCombat(lib *content.Library, player PlayerState, encounter content.EncounterDef, seed int64) *CombatState {
 	return NewCombatWithEnemies(lib, player, []content.EncounterDef{encounter}, encounter, seed)
 }
@@ -31,14 +112,7 @@ func NewCombatWithEnemies(lib *content.Library, player PlayerState, encounters [
 	if len(encounters) == 0 {
 		encounters = []content.EncounterDef{rewardBasis}
 	}
-	rng := rand.New(rand.NewSource(seed))
-	draw := make([]RuntimeCard, 0, len(player.Deck))
-	for _, card := range player.Deck {
-		draw = append(draw, RuntimeCard{ID: card.CardID, Upgraded: card.Upgraded})
-	}
-	rng.Shuffle(len(draw), func(i, j int) {
-		draw[i], draw[j] = draw[j], draw[i]
-	})
+	seat := buildCombatSeat(player, seed)
 
 	state := &CombatState{
 		Player: CombatActor{
@@ -51,7 +125,9 @@ func NewCombatWithEnemies(lib *content.Library, player PlayerState, encounters [
 		},
 		Encounter:   rewardBasis,
 		RewardBasis: rewardBasis,
-		DrawPile:    draw,
+		SeatPlayers: []PlayerState{player},
+		DrawPile:    append([]RuntimeCard{}, seat.DrawPile...),
+		Seats:       []CombatSeatState{seat},
 		Turn:        1,
 	}
 
@@ -82,6 +158,7 @@ func NewCombatWithEnemies(lib *content.Library, player PlayerState, encounters [
 		state.log(fmt.Sprintf("%s战斗开始时获得 %d 格挡", state.Player.Name, bonusBlock))
 	}
 	state.log("遭遇 " + EncounterGroupName(state))
+	syncLegacySeat0(state)
 	return state
 }
 
@@ -105,6 +182,7 @@ func passiveEffectsForSide(lib *content.Library, player PlayerState, combat *Com
 		}
 		return nil
 	}
+	player = combatPlayerStateForSeat(combat, player, index)
 
 	out := []content.Effect{}
 	for _, id := range player.Relics {
@@ -124,37 +202,52 @@ func passiveEffectsForSide(lib *content.Library, player PlayerState, combat *Com
 }
 
 func drawCards(lib *content.Library, combat *CombatState, count int) {
+	refreshSeat0FromLegacy(combat)
+	drawCardsForSeat(lib, combat, 0, count)
+}
+
+func drawCardsForSeat(lib *content.Library, combat *CombatState, seatIndex int, count int) {
 	if count <= 0 {
 		return
 	}
+	seat := combatSeat(combat, seatIndex)
+	if seat == nil {
+		return
+	}
 	for i := 0; i < count; i++ {
-		if len(combat.DrawPile) == 0 {
-			if len(combat.Discard) == 0 {
+		if len(seat.DrawPile) == 0 {
+			if len(seat.Discard) == 0 {
 				return
 			}
-			rng := rand.New(rand.NewSource(int64(combat.Turn*1000 + len(combat.Discard)*37 + len(combat.Exhaust)*17 + len(combat.Hand))))
-			rng.Shuffle(len(combat.Discard), func(i, j int) {
-				combat.Discard[i], combat.Discard[j] = combat.Discard[j], combat.Discard[i]
+			rng := rand.New(rand.NewSource(int64(combat.Turn*1000 + seatIndex*211 + len(seat.Discard)*37 + len(seat.Exhaust)*17 + len(seat.Hand))))
+			rng.Shuffle(len(seat.Discard), func(i, j int) {
+				seat.Discard[i], seat.Discard[j] = seat.Discard[j], seat.Discard[i]
 			})
-			combat.DrawPile = append(combat.DrawPile, combat.Discard...)
-			combat.Discard = nil
+			seat.DrawPile = append(seat.DrawPile, seat.Discard...)
+			seat.Discard = nil
 		}
-		card := combat.DrawPile[0]
-		combat.DrawPile = combat.DrawPile[1:]
-		if len(combat.Hand) >= combatHandLimit {
-			combat.Discard = append(combat.Discard, card)
+		card := seat.DrawPile[0]
+		seat.DrawPile = seat.DrawPile[1:]
+		if len(seat.Hand) >= combatHandLimit {
+			seat.Discard = append(seat.Discard, card)
 			combat.log("手牌已满，额外抽到的牌进入弃牌堆")
 			continue
 		}
-		combat.Hand = append(combat.Hand, card)
+		seat.Hand = append(seat.Hand, card)
 	}
+	syncLegacySeat0(combat)
 }
 
 func StartPlayerTurn(lib *content.Library, playerState PlayerState, combat *CombatState) {
+	StartPartyTurn(lib, []PlayerState{playerState}, combat)
+}
+
+func StartPartyTurn(lib *content.Library, players []PlayerState, combat *CombatState) {
 	if combat.Won || combat.Lost {
 		return
 	}
 	normalizeLegacyEnemyState(combat)
+	ensureCombatSeats(combat)
 	ResetEndTurnVotes(combat)
 	ResetCoopTurnTracking(combat)
 
@@ -167,9 +260,15 @@ func StartPlayerTurn(lib *content.Library, playerState PlayerState, combat *Comb
 		}
 	}
 
-	combat.Player.Energy = combat.Player.MaxEnergy
-	drawCards(lib, combat, 5)
-	triggerPassiveWindow(lib, playerState, combat, sidePlayer, turnStartWindow(sidePlayer))
+	for seatIndex, playerState := range players {
+		actor := partyActorBySeat(combat, seatIndex)
+		if actor == nil {
+			continue
+		}
+		actor.Energy = actor.MaxEnergy
+		drawCardsForSeat(lib, combat, seatIndex, 5)
+		triggerPlayerPassiveWindow(lib, playerState, combat, seatIndex, turnStartWindow(sidePlayer))
+	}
 	checkCombatOutcome(combat)
 	if combat.Won || combat.Lost {
 		return
@@ -178,8 +277,13 @@ func StartPlayerTurn(lib *content.Library, playerState PlayerState, combat *Comb
 }
 
 func AvailableCards(lib *content.Library, combat *CombatState) []RuntimeCard {
+	refreshSeat0FromLegacy(combat)
 	out := []RuntimeCard{}
-	for _, card := range combat.Hand {
+	seat := combatSeat(combat, 0)
+	if seat == nil {
+		return out
+	}
+	for _, card := range seat.Hand {
 		if lib.Cards[card.ID].Cost <= combat.Player.Energy {
 			out = append(out, card)
 		}
@@ -192,24 +296,45 @@ func PlayCard(lib *content.Library, playerState PlayerState, combat *CombatState
 }
 
 func PlayCardWithTarget(lib *content.Library, playerState PlayerState, combat *CombatState, handIndex int, target CombatTarget) error {
+	refreshSeat0FromLegacy(combat)
+	return PlaySeatCardWithTarget(lib, playerState, combat, 0, handIndex, target)
+}
+
+func PlaySeatCardWithTarget(lib *content.Library, playerState PlayerState, combat *CombatState, seatIndex, handIndex int, target CombatTarget) error {
 	normalizeLegacyEnemyState(combat)
-	if handIndex < 0 || handIndex >= len(combat.Hand) {
+	seat := combatSeat(combat, seatIndex)
+	actor := partyActorBySeat(combat, seatIndex)
+	if seat == nil || actor == nil {
+		return fmt.Errorf("invalid seat %d", seatIndex)
+	}
+	if handIndex < 0 || handIndex >= len(seat.Hand) {
 		return fmt.Errorf("invalid hand index %d", handIndex)
 	}
 
-	card := combat.Hand[handIndex]
+	card := seat.Hand[handIndex]
 	def := lib.Cards[card.ID]
-	if def.Cost > combat.Player.Energy {
+	if def.Cost > actor.Energy {
 		return fmt.Errorf("not enough energy")
 	}
 
-	combat.Player.Energy -= def.Cost
-	combat.Hand = append(combat.Hand[:handIndex], combat.Hand[handIndex+1:]...)
+	actor.Energy -= def.Cost
+	seat.Hand = append(seat.Hand[:handIndex], seat.Hand[handIndex+1:]...)
 
 	effects := activeEffectsForCard(lib, card)
-	for _, effect := range effects {
-		if err := resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: 0}, effect, card, target); err != nil {
-			return err
+	playEffects, selfReplies := splitCardPlayEffects(effects)
+	repeatCount := consumeNextCardRepeats(combat, seatIndex, def.Tags)
+	repeatCount += selfReplies
+	for repeatIndex := 0; repeatIndex <= repeatCount; repeatIndex++ {
+		if repeatIndex > 0 {
+			combat.log(fmt.Sprintf("%s再次结算 %s (%d/%d)", actor.Name, def.Name, repeatIndex, repeatCount))
+		}
+		for _, effect := range playEffects {
+			if err := resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: seatIndex}, effect, card, target); err != nil {
+				return err
+			}
+			if combat.Won || combat.Lost {
+				break
+			}
 		}
 		if combat.Won || combat.Lost {
 			break
@@ -217,11 +342,12 @@ func PlayCardWithTarget(lib *content.Library, playerState PlayerState, combat *C
 	}
 
 	if def.Exhaust {
-		combat.Exhaust = append(combat.Exhaust, card)
+		seat.Exhaust = append(seat.Exhaust, card)
 	} else {
-		combat.Discard = append(combat.Discard, card)
+		seat.Discard = append(seat.Discard, card)
 	}
 	combat.log("打出 " + def.Name)
+	syncLegacySeat0(combat)
 	return nil
 }
 
@@ -229,13 +355,28 @@ func EndPlayerTurn(lib *content.Library, playerState PlayerState, combat *Combat
 	if combat.Won || combat.Lost {
 		return
 	}
+	refreshSeat0FromLegacy(combat)
 	normalizeLegacyEnemyState(combat)
 	if !RequestEndTurnVote(combat, 0) {
 		combat.log("已提交结束回合，等待其他队友。")
 		return
 	}
+	endPartyTurn(lib, []PlayerState{playerState}, combat)
+}
 
-	triggerPassiveWindow(lib, playerState, combat, sidePlayer, turnEndWindow(sidePlayer))
+func EndPartyTurn(lib *content.Library, players []PlayerState, combat *CombatState) {
+	endPartyTurn(lib, players, combat)
+}
+
+func endPartyTurn(lib *content.Library, players []PlayerState, combat *CombatState) {
+	if combat.Won || combat.Lost {
+		return
+	}
+	normalizeLegacyEnemyState(combat)
+
+	for seatIndex, playerState := range players {
+		triggerPlayerPassiveWindow(lib, playerState, combat, seatIndex, turnEndWindow(sidePlayer))
+	}
 	checkCombatOutcome(combat)
 	if combat.Won || combat.Lost {
 		return
@@ -247,22 +388,28 @@ func EndPlayerTurn(lib *content.Library, playerState PlayerState, combat *Combat
 	if combat.Won || combat.Lost {
 		return
 	}
-	discardHand(combat)
+	discardHands(combat)
+	pruneTurnCardAugments(combat)
 	for _, actor := range PartyActors(combat) {
 		decrementTimedStatuses(actor)
 	}
 
+	leader := PlayerState{}
+	if len(players) > 0 {
+		leader = players[0]
+	}
 	for i := range combat.Enemies {
 		if combat.Enemies[i].HP <= 0 {
 			continue
 		}
-		runEnemyTurn(lib, playerState, combat, i)
+		runEnemyTurn(lib, leader, combat, i)
 		if combat.Won || combat.Lost {
 			return
 		}
 	}
 	combat.Turn++
 	syncPrimaryEnemy(combat)
+	syncLegacySeat0(combat)
 }
 
 func runEnemyTurn(lib *content.Library, playerState PlayerState, combat *CombatState, enemyIndex int) {
@@ -309,18 +456,66 @@ func UsePotion(lib *content.Library, playerState PlayerState, combat *CombatStat
 }
 
 func UsePotionWithTarget(lib *content.Library, playerState PlayerState, combat *CombatState, potionID string, target CombatTarget) error {
+	refreshSeat0FromLegacy(combat)
+	if seat := combatSeat(combat, 0); seat != nil {
+		if len(seat.Potions) == 0 {
+			seat.Potions = append([]string{}, playerState.Potions...)
+		}
+		found := false
+		for _, id := range seat.Potions {
+			if id == potionID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			def, ok := lib.Potions[potionID]
+			if !ok {
+				return fmt.Errorf("unknown potion %q", potionID)
+			}
+			for _, effect := range def.Effects {
+				if err := resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: 0}, effect, RuntimeCard{}, target); err != nil {
+					return err
+				}
+			}
+			seat.PotionsUsed = append(seat.PotionsUsed, potionID)
+			combat.log("使用药水 " + def.Name)
+			syncLegacySeat0(combat)
+			return nil
+		}
+	}
+	return UseSeatPotionWithTarget(lib, playerState, combat, 0, potionID, target)
+}
+
+func UseSeatPotionWithTarget(lib *content.Library, playerState PlayerState, combat *CombatState, seatIndex int, potionID string, target CombatTarget) error {
 	normalizeLegacyEnemyState(combat)
+	seat := combatSeat(combat, seatIndex)
+	if seat == nil {
+		return fmt.Errorf("invalid seat %d", seatIndex)
+	}
+	found := -1
+	for i, id := range seat.Potions {
+		if id == potionID {
+			found = i
+			break
+		}
+	}
+	if found < 0 {
+		return fmt.Errorf("potion %q not available", potionID)
+	}
 	def, ok := lib.Potions[potionID]
 	if !ok {
 		return fmt.Errorf("unknown potion %q", potionID)
 	}
 	for _, effect := range def.Effects {
-		if err := resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: 0}, effect, RuntimeCard{}, target); err != nil {
+		if err := resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: seatIndex}, effect, RuntimeCard{}, target); err != nil {
 			return err
 		}
 	}
-	combat.PotionsUsed = append(combat.PotionsUsed, potionID)
+	seat.Potions = append(seat.Potions[:found], seat.Potions[found+1:]...)
+	seat.PotionsUsed = append(seat.PotionsUsed, potionID)
 	combat.log("使用药水 " + def.Name)
+	syncLegacySeat0(combat)
 	return nil
 }
 
@@ -330,6 +525,56 @@ func ApplyExternalCombatEffect(lib *content.Library, playerState PlayerState, co
 	}
 	normalizeLegacyEnemyState(combat)
 	return resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: 0}, effect, RuntimeCard{}, target)
+}
+
+func ApplySeatExternalCombatEffect(lib *content.Library, playerState PlayerState, combat *CombatState, seatIndex int, effect content.Effect, target CombatTarget) error {
+	if combat == nil {
+		return fmt.Errorf("combat state is nil")
+	}
+	normalizeLegacyEnemyState(combat)
+	return resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: seatIndex}, effect, RuntimeCard{}, target)
+}
+
+func PendingNextCardRepeats(combat *CombatState, seatIndex int) int {
+	total := 0
+	for _, repeat := range pendingCardRepeats(combat, seatIndex) {
+		total += repeat.Count
+	}
+	return total
+}
+
+func PendingNextCardRepeatDescriptions(combat *CombatState, seatIndex int) []string {
+	repeats := pendingCardRepeats(combat, seatIndex)
+	if len(repeats) == 0 {
+		return nil
+	}
+	counts := map[string]int{}
+	extraTags := []string{}
+	for _, repeat := range repeats {
+		if repeat.Count <= 0 {
+			continue
+		}
+		counts[repeat.Tag] += repeat.Count
+		switch repeat.Tag {
+		case "", "attack", "spell":
+		default:
+			if !slices.Contains(extraTags, repeat.Tag) {
+				extraTags = append(extraTags, repeat.Tag)
+			}
+		}
+	}
+	out := []string{}
+	for _, tag := range []string{"", "attack", "spell"} {
+		if counts[tag] > 0 {
+			out = append(out, pendingRepeatDescription(counts[tag], tag))
+		}
+	}
+	for _, tag := range extraTags {
+		if counts[tag] > 0 {
+			out = append(out, pendingRepeatDescription(counts[tag], tag))
+		}
+	}
+	return out
 }
 
 func FinishCombat(lib *content.Library, run *RunState, node Node, combat *CombatState) {
@@ -397,7 +642,7 @@ func resolveCombatEffect(lib *content.Library, playerState PlayerState, combat *
 		for _, target := range targets {
 			final := applyOutgoingDamageModifiers(lib, playerState, combat, source, base, tags)
 			final = applyIncomingDamageModifiers(lib, playerState, combat, target, final)
-			dealt := dealDamageToTarget(combat, target, final)
+			dealt := dealDamageToTarget(combat, source, target, final)
 			totalDealt += dealt
 			combat.log(fmt.Sprintf("%s对%s造成 %d 伤害", sourceLabel(combat, source), targetLabel(combat, target), dealt))
 			checkCombatOutcome(combat)
@@ -416,7 +661,7 @@ func resolveCombatEffect(lib *content.Library, playerState PlayerState, combat *
 			combat.log(fmt.Sprintf("%s获得 %d 格挡", targetLabel(combat, target), amount))
 		}
 	case "draw":
-		drawCards(lib, combat, effect.Value)
+		drawCardsForSeat(lib, combat, source.index, effect.Value)
 		combat.log(fmt.Sprintf("抽 %d 张牌", effect.Value))
 	case "apply_status":
 		targets := resolveSupportTargets(combat, source, effect, chosenTarget)
@@ -425,6 +670,17 @@ func resolveCombatEffect(lib *content.Library, playerState PlayerState, combat *
 		}
 		for _, target := range targets {
 			applyStatus(targetActor(combat, target), effect.Status, effect.Value, effect.Duration)
+			if source.side == sidePlayer {
+				recordSeatStatusApplied(combat, source.index, effect.Value)
+			}
+			switch target.Kind {
+			case CombatTargetAlly:
+				recordSeatStatusReceived(combat, target.Index, effect.Value)
+			case CombatTargetAllies:
+				for _, allyTarget := range livingAllyTargets(combat) {
+					recordSeatStatusReceived(combat, allyTarget.Index, effect.Value)
+				}
+			}
 			combat.log(fmt.Sprintf("%s获得状态 %s %d", targetLabel(combat, target), statusLabel(effect.Status), effect.Value))
 		}
 	case "cleanse_status":
@@ -444,13 +700,92 @@ func resolveCombatEffect(lib *content.Library, playerState PlayerState, combat *
 			combat.log(fmt.Sprintf("%s恢复 %d 生命", targetLabel(combat, target), actor.HP-before))
 		}
 	case "gain_energy":
-		combat.Player.Energy += effect.Value
+		if actor := sourceActor(combat, source); actor != nil {
+			actor.Energy += effect.Value
+		}
 		combat.log(fmt.Sprintf("获得 %d 点能量", effect.Value))
+	case "repeat_next_card":
+		count := effect.Value
+		if count <= 0 {
+			count = 1
+		}
+		queueNextCardRepeats(combat, source.index, count, effect.Tag)
+		combat.log(fmt.Sprintf("%s获得效果：%s", sourceLabel(combat, source), pendingRepeatDescription(count, effect.Tag)))
 	default:
 		return fmt.Errorf("unsupported combat effect %s", effect.Op)
 	}
 	syncPrimaryEnemy(combat)
 	return nil
+}
+
+func queueNextCardRepeats(combat *CombatState, seatIndex int, count int, tag string) {
+	if count <= 0 {
+		return
+	}
+	seat := combatSeat(combat, seatIndex)
+	if seat == nil {
+		return
+	}
+	for i := range seat.PendingCardRepeats {
+		if seat.PendingCardRepeats[i].Tag != tag {
+			continue
+		}
+		seat.PendingCardRepeats[i].Count += count
+		return
+	}
+	seat.PendingCardRepeats = append(seat.PendingCardRepeats, PendingCardRepeat{Count: count, Tag: tag})
+}
+
+func consumeNextCardRepeats(combat *CombatState, seatIndex int, cardTags []string) int {
+	seat := combatSeat(combat, seatIndex)
+	if seat == nil {
+		return 0
+	}
+	count := seat.NextCardRepeats
+	seat.NextCardRepeats = 0
+	remaining := make([]PendingCardRepeat, 0, len(seat.PendingCardRepeats))
+	for _, repeat := range seat.PendingCardRepeats {
+		if repeat.Count <= 0 {
+			continue
+		}
+		if repeat.Tag == "" || slices.Contains(cardTags, repeat.Tag) {
+			count += repeat.Count
+			continue
+		}
+		remaining = append(remaining, repeat)
+	}
+	seat.PendingCardRepeats = remaining
+	return count
+}
+
+func splitCardPlayEffects(effects []content.Effect) ([]content.Effect, int) {
+	playEffects := make([]content.Effect, 0, len(effects))
+	replies := 0
+	for _, effect := range effects {
+		if effect.Op == "reply" {
+			replies += max(1, effect.Value)
+			continue
+		}
+		playEffects = append(playEffects, effect)
+	}
+	return playEffects, replies
+}
+
+func pendingCardRepeats(combat *CombatState, seatIndex int) []PendingCardRepeat {
+	seat := combatSeat(combat, seatIndex)
+	if seat == nil {
+		return nil
+	}
+	out := make([]PendingCardRepeat, 0, len(seat.PendingCardRepeats)+1)
+	if seat.NextCardRepeats > 0 {
+		out = append(out, PendingCardRepeat{Count: seat.NextCardRepeats})
+	}
+	for _, repeat := range seat.PendingCardRepeats {
+		if repeat.Count > 0 {
+			out = append(out, repeat)
+		}
+	}
+	return out
 }
 
 func triggerPassiveWindow(lib *content.Library, playerState PlayerState, combat *CombatState, side combatSide, window string) {
@@ -466,12 +801,15 @@ func triggerPassiveWindow(lib *content.Library, playerState PlayerState, combat 
 		}
 		return
 	}
+	triggerPlayerPassiveWindow(lib, playerState, combat, 0, window)
+}
 
-	for _, effect := range passiveEffectsForSide(lib, playerState, combat, side, 0) {
-		if !matchesPassiveWindow(effect.Trigger, side, window) {
+func triggerPlayerPassiveWindow(lib *content.Library, playerState PlayerState, combat *CombatState, seatIndex int, window string) {
+	for _, effect := range passiveEffectsForSide(lib, playerState, combat, sidePlayer, seatIndex) {
+		if !matchesPassiveWindow(effect.Trigger, sidePlayer, window) {
 			continue
 		}
-		if err := resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: 0}, effect, RuntimeCard{}, CombatTarget{}); err != nil {
+		if err := resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: seatIndex}, effect, RuntimeCard{}, CombatTarget{}); err != nil {
 			combat.log("被动触发失败: " + err.Error())
 		}
 		if combat.Won || combat.Lost {
@@ -500,7 +838,16 @@ func processStatusStart(combat *CombatState, actor *CombatActor, side combatSide
 		switch name {
 		case "burn":
 			lost := loseHP(actor, status.Stacks)
+			if side == sidePlayer {
+				recordSeatDamageReceived(combat, index, lost, 0)
+			}
 			combat.log(fmt.Sprintf("%s受到燃烧 %d 伤害", actorLabel(combat, side, index, actor), lost))
+		case "poison":
+			lost := loseHP(actor, status.Stacks)
+			if side == sidePlayer {
+				recordSeatDamageReceived(combat, index, lost, 0)
+			}
+			combat.log(fmt.Sprintf("%s受到中毒 %d 伤害", actorLabel(combat, side, index, actor), lost))
 		}
 	}
 }
@@ -541,11 +888,24 @@ func decrementTimedStatuses(actor *CombatActor) {
 }
 
 func discardHand(combat *CombatState) {
-	if len(combat.Hand) == 0 {
+	discardHandForSeat(combat, 0)
+}
+
+func discardHandForSeat(combat *CombatState, seatIndex int) {
+	seat := combatSeat(combat, seatIndex)
+	if seat == nil || len(seat.Hand) == 0 {
 		return
 	}
-	combat.Discard = append(combat.Discard, combat.Hand...)
-	combat.Hand = nil
+	seat.Discard = append(seat.Discard, seat.Hand...)
+	seat.Hand = nil
+	syncLegacySeat0(combat)
+}
+
+func discardHands(combat *CombatState) {
+	ensureCombatSeats(combat)
+	for seatIndex := range combat.Seats {
+		discardHandForSeat(combat, seatIndex)
+	}
 }
 
 func applyOutgoingDamageModifiers(lib *content.Library, playerState PlayerState, combat *CombatState, source combatSourceRef, base int, tags []string) int {
@@ -592,10 +952,16 @@ func applyIncomingDamageModifiers(lib *content.Library, playerState PlayerState,
 		return amount
 	default:
 		total := amount
-		if statusStacks(combat.Player.Statuses, "vulnerable") > 0 {
+		seatIndex := 0
+		if target.Kind == CombatTargetAlly {
+			seatIndex = target.Index
+		}
+		actor := partyActorBySeat(combat, seatIndex)
+		if actor != nil && statusStacks(actor.Statuses, "vulnerable") > 0 {
 			total += 2
 		}
-		for _, effect := range passiveEffectsForSide(lib, playerState, combat, sidePlayer, 0) {
+		targetPlayer := combatPlayerStateForSeat(combat, playerState, seatIndex)
+		for _, effect := range passiveEffectsForSide(lib, targetPlayer, combat, sidePlayer, seatIndex) {
 			if effect.Op == "modify_taken_damage" && (effect.Trigger == "" || effect.Trigger == "incoming_damage") {
 				total += effect.Value
 			}
@@ -649,7 +1015,7 @@ func sourceActor(combat *CombatState, source combatSourceRef) *CombatActor {
 	if source.side == sideEnemy {
 		return &combat.Enemies[source.index].CombatActor
 	}
-	return &combat.Player
+	return partyActorBySeat(combat, source.index)
 }
 
 func targetActor(combat *CombatState, target CombatTarget) *CombatActor {
@@ -693,13 +1059,69 @@ func CardTargetKindForCard(lib *content.Library, card RuntimeCard) CombatTargetK
 	}
 }
 
+func PotionTargetKind(lib *content.Library, potionID string) CombatTargetKind {
+	def, ok := lib.Potions[potionID]
+	if !ok {
+		return CombatTargetNone
+	}
+	needEnemy := false
+	needAlly := false
+	for _, effect := range def.Effects {
+		switch effect.Target {
+		case "all_enemies":
+			return CombatTargetEnemies
+		case "all_allies":
+			return CombatTargetAllies
+		}
+		if effectTargetsEnemies(effect, combatSourceRef{side: sidePlayer, index: 0}) {
+			needEnemy = true
+		}
+		if effectSupportsFriendlyTarget(effect) {
+			needAlly = true
+		}
+	}
+	switch {
+	case needEnemy:
+		return CombatTargetEnemy
+	case needAlly:
+		return CombatTargetAlly
+	default:
+		return CombatTargetNone
+	}
+}
+
 func DefaultTargetForCard(lib *content.Library, combat *CombatState, card RuntimeCard) CombatTarget {
+	return DefaultTargetForSeat(lib, combat, 0, card)
+}
+
+func DefaultTargetForSeat(lib *content.Library, combat *CombatState, seatIndex int, card RuntimeCard) CombatTarget {
 	switch CardTargetKindForCard(lib, card) {
 	case CombatTargetEnemy:
 		return CombatTarget{Kind: CombatTargetEnemy, Index: firstLivingEnemyIndex(combat)}
 	case CombatTargetEnemies:
 		return CombatTarget{Kind: CombatTargetEnemies}
 	case CombatTargetAlly:
+		if validAllyTarget(combat, seatIndex) {
+			return CombatTarget{Kind: CombatTargetAlly, Index: seatIndex}
+		}
+		return CombatTarget{Kind: CombatTargetAlly, Index: 0}
+	case CombatTargetAllies:
+		return CombatTarget{Kind: CombatTargetAllies}
+	default:
+		return CombatTarget{Kind: CombatTargetNone}
+	}
+}
+
+func DefaultTargetForPotion(lib *content.Library, combat *CombatState, seatIndex int, potionID string) CombatTarget {
+	switch PotionTargetKind(lib, potionID) {
+	case CombatTargetEnemy:
+		return CombatTarget{Kind: CombatTargetEnemy, Index: firstLivingEnemyIndex(combat)}
+	case CombatTargetEnemies:
+		return CombatTarget{Kind: CombatTargetEnemies}
+	case CombatTargetAlly:
+		if validAllyTarget(combat, seatIndex) {
+			return CombatTarget{Kind: CombatTargetAlly, Index: seatIndex}
+		}
 		return CombatTarget{Kind: CombatTargetAlly, Index: 0}
 	case CombatTargetAllies:
 		return CombatTarget{Kind: CombatTargetAllies}
@@ -752,7 +1174,13 @@ func resolveSupportTargets(combat *CombatState, source combatSourceRef, effect c
 		if chosenTarget.Kind == CombatTargetAlly && validAllyTarget(combat, chosenTarget.Index) {
 			return []CombatTarget{{Kind: CombatTargetAlly, Index: chosenTarget.Index}}
 		}
+		if validAllyTarget(combat, source.index) {
+			return []CombatTarget{{Kind: CombatTargetAlly, Index: source.index}}
+		}
 		return []CombatTarget{{Kind: CombatTargetAlly, Index: 0}}
+	}
+	if validAllyTarget(combat, source.index) {
+		return []CombatTarget{{Kind: CombatTargetAlly, Index: source.index}}
 	}
 	return []CombatTarget{{Kind: CombatTargetAlly, Index: 0}}
 }
@@ -867,6 +1295,9 @@ func sourceLabel(combat *CombatState, source combatSourceRef) string {
 		}
 		return "敌人"
 	}
+	if actor := partyActorBySeat(combat, source.index); actor != nil && actor.Name != "" {
+		return actor.Name
+	}
 	return "队伍"
 }
 
@@ -944,6 +1375,8 @@ func statusLabel(name string) string {
 		return "脆弱"
 	case "burn":
 		return "燃烧"
+	case "poison":
+		return "中毒"
 	case "regen":
 		return "再生"
 	case "taunt":
@@ -1007,23 +1440,34 @@ func (c *CombatState) log(text string) {
 	c.Log = append(c.Log, CombatLogEntry{Turn: c.Turn, Text: text})
 }
 
-func dealDamageToTarget(combat *CombatState, target CombatTarget, amount int) int {
+func dealDamageToTarget(combat *CombatState, source combatSourceRef, target CombatTarget, amount int) int {
 	switch target.Kind {
 	case CombatTargetEnemy:
 		dealt := dealDamage(targetActor(combat, target), amount)
+		if source.side == sidePlayer {
+			recordSeatDamageDealt(combat, source.index, dealt)
+		}
 		syncPrimaryEnemy(combat)
 		return dealt
 	case CombatTargetEnemies:
 		total := 0
 		for i := range combat.Enemies {
 			if combat.Enemies[i].HP > 0 {
-				total += dealDamage(&combat.Enemies[i].CombatActor, amount)
+				dealt := dealDamage(&combat.Enemies[i].CombatActor, amount)
+				total += dealt
+				if source.side == sidePlayer {
+					recordSeatDamageDealt(combat, source.index, dealt)
+				}
 			}
 		}
 		syncPrimaryEnemy(combat)
 		return total
 	default:
-		return DealPlayerSideDamage(combat, amount)
+		result := dealPlayerSideDamageDetailed(combat, amount)
+		for seatIndex := range result.SeatTaken {
+			recordSeatDamageReceived(combat, seatIndex, result.SeatTaken[seatIndex], result.SeatBlocked[seatIndex])
+		}
+		return result.Taken
 	}
 }
 

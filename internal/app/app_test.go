@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,78 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+func startCommandCaptureSession(t *testing.T) (*netplay.Session, <-chan map[string]any) {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen() error = %v", err)
+	}
+
+	commands := make(chan map[string]any, 8)
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, err := listener.Accept()
+		if err != nil {
+			close(commands)
+			return
+		}
+		defer conn.Close()
+
+		dec := json.NewDecoder(conn)
+		var hello map[string]any
+		if err := dec.Decode(&hello); err != nil {
+			close(commands)
+			return
+		}
+		for {
+			var msg map[string]any
+			if err := dec.Decode(&msg); err != nil {
+				close(commands)
+				return
+			}
+			if msg["type"] != "command" {
+				continue
+			}
+			command, _ := msg["command"].(map[string]any)
+			commands <- command
+		}
+	}()
+
+	session, err := netplay.StartJoinedSession(listener.Addr().String(), "Tester", "vanguard")
+	if err != nil {
+		_ = listener.Close()
+		t.Fatalf("StartJoinedSession() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = session.Close()
+		_ = listener.Close()
+		<-serverDone
+	})
+	return session, commands
+}
+
+func mustReceiveCommand(t *testing.T, commands <-chan map[string]any) map[string]any {
+	t.Helper()
+	select {
+	case command := <-commands:
+		return command
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected captured multiplayer command")
+		return nil
+	}
+}
+
+func ensureNoSecondCommand(t *testing.T, commands <-chan map[string]any) {
+	t.Helper()
+	select {
+	case command := <-commands:
+		t.Fatalf("expected no second multiplayer command, got %#v", command)
+	case <-time.After(120 * time.Millisecond):
+	}
+}
 
 func TestModelCanStartStoryRun(t *testing.T) {
 	lib, err := content.LoadEmbedded()
@@ -94,6 +168,58 @@ func TestModelCanContinueFromCheckpoint(t *testing.T) {
 	}
 	if m1.currentNode.Kind != engine.NodeShop {
 		t.Fatalf("expected current node to be restored, got %#v", m1.currentNode)
+	}
+}
+
+func TestModelCanContinueDeckActionCheckpoint(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	store := storage.NewStore(t.TempDir())
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 42)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	run.Checkpoint = &engine.RunCheckpoint{
+		Screen:             string(screenDeckAct),
+		CurrentNode:        &engine.Node{ID: "event-node", Act: 1, Floor: 2, Index: 0, Kind: engine.NodeEvent},
+		EventState:         &engine.EventState{Event: lib.Events["bulwark_blueprint"]},
+		EventChoice:        "opening_spark",
+		DeckActionMode:     "event_augment_card",
+		DeckActionTitle:    "Bulwark Blueprint",
+		DeckActionSubtitle: "Choose a card to gain Opening Spark for 1 turn.",
+		DeckActionIndexes:  []int{0, 1},
+		DeckActionEffect: &content.Effect{
+			Op:       "augment_card",
+			Name:     "opening_spark",
+			Scope:    "turn",
+			Selector: "choose_upgradable",
+			Effects: []content.Effect{
+				{Op: "draw", Value: 1},
+			},
+		},
+		DeckActionTakeEquip: true,
+	}
+
+	m := newModel(lib, store, engine.DefaultProfile(lib), run)
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m1 := next.(model)
+	if m1.screen != screenDeckAct {
+		t.Fatalf("expected checkpoint screen %q, got %q", screenDeckAct, m1.screen)
+	}
+	if m1.eventState == nil || m1.eventState.Event.ID != "bulwark_blueprint" {
+		t.Fatalf("expected event state to be restored, got %#v", m1.eventState)
+	}
+	if m1.deckActionMode != "event_augment_card" || len(m1.deckActionIndexes) != 2 {
+		t.Fatalf("expected deck action state to be restored, got mode=%q indexes=%v", m1.deckActionMode, m1.deckActionIndexes)
+	}
+	if m1.deckActionEffect == nil || m1.deckActionEffect.Scope != "turn" || len(m1.deckActionEffect.Effects) != 1 {
+		t.Fatalf("expected deck action effect to be restored, got %#v", m1.deckActionEffect)
+	}
+	if !m1.deckActionTakeEquip {
+		t.Fatalf("expected deck action take-equipment flag to be restored")
 	}
 }
 
@@ -184,7 +310,7 @@ func TestMultiplayerCreateVisibleLaunchAndBackMatchActions(t *testing.T) {
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 		m = next.(model)
 	}
-	if got := multiplayerCreateLines(m)[m.index]; got != "开始创建房间" {
+	if got := multiplayerCreateLines(m)[m.index]; got != "Create room now" {
 		t.Fatalf("expected visible launch item at index %d, got %q", m.index, got)
 	}
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -204,7 +330,7 @@ func TestMultiplayerCreateVisibleLaunchAndBackMatchActions(t *testing.T) {
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 		m = next.(model)
 	}
-	if got := multiplayerCreateLines(m)[m.index]; got != "返回上一级" {
+	if got := multiplayerCreateLines(m)[m.index]; got != "Back" {
 		t.Fatalf("expected visible back item at index %d, got %q", m.index, got)
 	}
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -247,6 +373,275 @@ func TestMenuCanOpenMultiplayerAndLaunchJoin(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("expected async command when launching join flow")
+	}
+}
+
+func TestCombatDigitKeysSwitchInspectPane(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 42)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), run)
+	m.screen = screenCombat
+	m.combat = &engine.CombatState{}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	m1 := next.(model)
+	if m1.combatPane != 2 {
+		t.Fatalf("expected combat pane 2 after pressing 3, got %d", m1.combatPane)
+	}
+	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'6'}})
+	m2 := next.(model)
+	if m2.combatPane != 5 {
+		t.Fatalf("expected combat pane 5 after pressing 6, got %d", m2.combatPane)
+	}
+}
+
+func TestCombatLogPageKeysAdvanceAndRewind(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 42)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), run)
+	m.screen = screenCombat
+	m.combat = &engine.CombatState{}
+	m.combatTopPage = 2
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{','}})
+	m1 := next.(model)
+	if m1.combatLogPage != 1 {
+		t.Fatalf("expected comma to advance combat log page, got %d", m1.combatLogPage)
+	}
+	if m1.combatTopPage != 2 {
+		t.Fatalf("expected comma to leave combat top page unchanged, got %d", m1.combatTopPage)
+	}
+
+	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	m2 := next.(model)
+	if m2.combatLogPage != 0 {
+		t.Fatalf("expected period to rewind combat log page, got %d", m2.combatLogPage)
+	}
+
+	next, _ = m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	m3 := next.(model)
+	if m3.combatLogPage != 0 {
+		t.Fatalf("expected period at first page to stay pinned at zero, got %d", m3.combatLogPage)
+	}
+}
+
+func TestMultiplayerInspectLogPageKeysAdvanceAndRewind(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), nil)
+	m.screen = screenMultiplayerRoom
+	var snapshot netplay.Snapshot
+	logs := make([]string, 0, 12)
+	for i := 1; i <= 12; i++ {
+		logs = append(logs, fmt.Sprintf("T%d entry-%02d", i, i))
+	}
+	jsonBlob, err := json.Marshal(map[string]any{
+		"phase": "combat",
+		"combat": map[string]any{
+			"logs": logs,
+			"party": []map[string]any{{
+				"index":  1,
+				"name":   "Host",
+				"hp":     50,
+				"max_hp": 50,
+			}},
+			"enemies": []map[string]any{{
+				"index":  1,
+				"name":   "Slime",
+				"hp":     18,
+				"max_hp": 24,
+				"intent": "Attack",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if err := json.Unmarshal(jsonBlob, &snapshot); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	m.multiplayerSnapshot = &snapshot
+	m.multiplayerRoomFocus = multiplayerRoomFocusInspect
+	m.multiplayerInspectPane = 3
+	m.multiplayerCombatTopPage = 2
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{','}})
+	m1 := next.(model)
+	if m1.multiplayerInspectLogPage != 1 {
+		t.Fatalf("expected comma to advance multiplayer inspect log page, got %d", m1.multiplayerInspectLogPage)
+	}
+	if m1.multiplayerCombatTopPage != 2 {
+		t.Fatalf("expected comma to leave multiplayer top page unchanged, got %d", m1.multiplayerCombatTopPage)
+	}
+
+	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	m2 := next.(model)
+	if m2.multiplayerInspectLogPage != 0 {
+		t.Fatalf("expected period to rewind multiplayer inspect log page, got %d", m2.multiplayerInspectLogPage)
+	}
+
+	next, _ = m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	m3 := next.(model)
+	if m3.multiplayerInspectLogPage != 0 {
+		t.Fatalf("expected period at first page to stay pinned at zero, got %d", m3.multiplayerInspectLogPage)
+	}
+}
+
+func TestCombatSubmitThrottlePreventsRapidRepeat(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 42)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	combat, err := engine.StartEncounter(lib, run, engine.Node{ID: "n1", Kind: engine.NodeMonster, Act: 1, Floor: 1, Index: 0})
+	if err != nil {
+		t.Fatalf("StartEncounter() error = %v", err)
+	}
+	engine.StartPlayerTurn(lib, run.Player, combat)
+	if len(combat.Hand) == 0 {
+		t.Fatal("expected opening hand for throttle test")
+	}
+
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), run)
+	m.screen = screenCombat
+	m.combat = combat
+	fixed := time.Unix(1700000000, 0)
+	m.now = func() time.Time { return fixed }
+	m.syncCombatTarget()
+
+	before := len(m.combat.Hand)
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m1 := next.(model)
+	if got := len(m1.combat.Hand); got != before-1 {
+		t.Fatalf("expected first enter to play one card, hand %d -> %d", before, got)
+	}
+
+	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := next.(model)
+	if got := len(m2.combat.Hand); got != len(m1.combat.Hand) {
+		t.Fatalf("expected rapid second enter to be throttled, hand stayed %d but got %d", len(m1.combat.Hand), got)
+	}
+	if !strings.Contains(m2.message, "slow down") {
+		t.Fatalf("expected throttle message, got %q", m2.message)
+	}
+}
+
+func TestMapOverlayCanToggleDuringRun(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 42)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), run)
+	m.screen = screenCombat
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	m1 := next.(model)
+	if !m1.showMapOverlay {
+		t.Fatalf("expected map overlay to open on m")
+	}
+	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m2 := next.(model)
+	if m2.showMapOverlay {
+		t.Fatalf("expected map overlay to close on esc")
+	}
+}
+
+func TestMapOverlayCanToggleInMultiplayerMapPhase(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), nil)
+	m.screen = screenMultiplayerRoom
+	var snapshot netplay.Snapshot
+	if err := json.Unmarshal([]byte(`{"phase":"map","map":{"act":1,"next_floor":2}}`), &snapshot); err != nil {
+		t.Fatalf("json.Unmarshal(map) error = %v", err)
+	}
+	m.multiplayerSnapshot = &snapshot
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	m1 := next.(model)
+	if !m1.showMapOverlay {
+		t.Fatalf("expected multiplayer map overlay to open on m during map phase")
+	}
+}
+
+func TestMapOverlayCanToggleInMultiplayerCombatWithSharedMap(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), nil)
+	m.screen = screenMultiplayerRoom
+	var snapshot netplay.Snapshot
+	if err := json.Unmarshal([]byte(`{"phase":"combat","shared_map":{"act":1,"next_floor":3,"current_floor":2,"current_node_id":"n2"}}`), &snapshot); err != nil {
+		t.Fatalf("json.Unmarshal(shared_map) error = %v", err)
+	}
+	m.multiplayerSnapshot = &snapshot
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	m1 := next.(model)
+	if !m1.showMapOverlay {
+		t.Fatalf("expected multiplayer map overlay to open on m when only shared_map is present")
+	}
+}
+
+func TestStatsOverlayCanToggleDuringRun(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 42)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), run)
+	m.screen = screenCombat
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
+	m1 := next.(model)
+	if !m1.showStatsOverlay {
+		t.Fatalf("expected stats overlay to open on K")
+	}
+	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m2 := next.(model)
+	if m2.showStatsOverlay {
+		t.Fatalf("expected stats overlay to close on esc")
+	}
+}
+
+func TestStatsOverlayCanToggleInMultiplayerRoom(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), nil)
+	m.screen = screenMultiplayerRoom
+	var snapshot netplay.Snapshot
+	if err := json.Unmarshal([]byte(`{"phase":"combat","stats":{"seat_name":"Guest","combat_turns":3,"combat":{"damage_dealt":12},"run_turns":8,"run":{"damage_taken":5}}}`), &snapshot); err != nil {
+		t.Fatalf("json.Unmarshal(stats) error = %v", err)
+	}
+	m.multiplayerSnapshot = &snapshot
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
+	m1 := next.(model)
+	if !m1.showStatsOverlay {
+		t.Fatalf("expected multiplayer stats overlay to open on K")
 	}
 }
 
@@ -320,26 +715,27 @@ func TestMultiplayerRoomQuitActionReturnsMenu(t *testing.T) {
 	}
 }
 
-func TestMultiplayerQuickActionsUseChineseLabels(t *testing.T) {
+func TestMultiplayerQuickActionsUseReadableLabels(t *testing.T) {
 	snapshot := &netplay.Snapshot{
 		Phase:    "lobby",
-		Commands: []string{"chat <text>", "quit"},
-		Examples: []string{"ready", "start"},
+		SelfID:   "seat-1",
+		HostID:   "seat-1",
+		Examples: []string{"ready", "start", "chat hello", "quit"},
 	}
 
 	actions := multiplayerQuickActions(snapshot)
 	labels := multiplayerQuickActionLabels(actions)
 	joined := strings.Join(labels, " | ")
-	if !strings.Contains(joined, "标记为已准备") {
+	if !strings.Contains(joined, "Mark yourself ready") {
 		t.Fatalf("expected ready label in %q", joined)
 	}
-	if !strings.Contains(joined, "开始本局冒险") {
+	if !strings.Contains(joined, "Host only: Start this run") {
 		t.Fatalf("expected start label in %q", joined)
 	}
-	if !strings.Contains(joined, "发送聊天消息") {
+	if !strings.Contains(joined, "Send chat: hello") {
 		t.Fatalf("expected chat template label in %q", joined)
 	}
-	if !strings.Contains(joined, "离开当前房间") {
+	if !strings.Contains(joined, "Leave the current room") {
 		t.Fatalf("expected quit label in %q", joined)
 	}
 }
@@ -356,7 +752,7 @@ func TestMultiplayerQuickActionsDescribeMapNode(t *testing.T) {
 	if len(actions) != 1 {
 		t.Fatalf("expected one quick action, got %d", len(actions))
 	}
-	if got := actions[0].Label; got != "房主操作: 前往节点 1" {
+	if got := actions[0].Label; got != "Host only: Go to node 1" {
 		t.Fatalf("expected map node label, got %q", got)
 	}
 	if actions[0].Command != "node 1" {
@@ -370,13 +766,13 @@ func TestMultiplayerQuickActionsMarkHostOnlyCommands(t *testing.T) {
 	if len(actions) != 1 {
 		t.Fatalf("expected one action, got %d", len(actions))
 	}
-	if got := actions[0].Label; got != "仅房主: 选择下一地图节点" {
+	if got := actions[0].Label; got != "Host only (locked): Choose the next map node" {
 		t.Fatalf("expected non-host label, got %q", got)
 	}
 
 	host := &netplay.Snapshot{Phase: "map", Commands: []string{"node <index>"}, SelfID: "seat-1", HostID: "seat-1"}
 	actions = multiplayerQuickActions(host)
-	if got := actions[0].Label; got != "房主操作: 选择下一地图节点" {
+	if got := actions[0].Label; got != "Host only: Choose the next map node" {
 		t.Fatalf("expected host label, got %q", got)
 	}
 }
@@ -393,7 +789,7 @@ func TestMultiplayerQuickActionsDescribeCombatNames(t *testing.T) {
 			"party":[{"index":1,"name":"Host","hp":50,"max_hp":60,"block":0}],
 			"enemies":[{"index":1,"name":"Slime","hp":18,"max_hp":24,"block":0,"intent":"Attack"}],
 			"hand":[{"index":1,"name":"Strike","cost":1,"summary":"Deal 6 damage","target_hint":"Single enemy"}],
-			"potions":["火焰药水"]
+			"potions":["Smoke Bomb"]
 		}
 	}`)
 	if err := json.Unmarshal(jsonBlob, &snapshot); err != nil {
@@ -403,13 +799,13 @@ func TestMultiplayerQuickActionsDescribeCombatNames(t *testing.T) {
 	actions := multiplayerQuickActions(&snapshot)
 	labels := multiplayerQuickActionLabels(actions)
 	joined := strings.Join(labels, " | ")
-	if !strings.Contains(joined, "打出 Strike -> 敌人 1 Slime") {
+	if !strings.Contains(joined, "Play Strike -> enemy 1 Slime") {
 		t.Fatalf("expected card+target label in %q", joined)
 	}
-	if !strings.Contains(joined, "使用药水「火焰药水」 -> 敌人 1 Slime") {
+	if !strings.Contains(joined, "Use Potion Smoke Bomb -> enemy 1 Slime") {
 		t.Fatalf("expected potion+target label in %q", joined)
 	}
-	if !strings.Contains(joined, "结束本回合并提交投票") {
+	if !strings.Contains(joined, "End this turn and submit your vote") {
 		t.Fatalf("expected end-turn label in %q", joined)
 	}
 }
@@ -426,10 +822,10 @@ func TestMultiplayerQuickActionsDescribeRewardShopAndEventNames(t *testing.T) {
 		t.Fatalf("json.Unmarshal(reward) error = %v", err)
 	}
 	rewardLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(reward)), " | ")
-	if !strings.Contains(rewardLabels, "房主操作: 领取奖励卡 Shield Wall") {
+	if !strings.Contains(rewardLabels, "Host only: Take reward card Shield Wall") {
 		t.Fatalf("expected named reward label in %q", rewardLabels)
 	}
-	if !strings.Contains(rewardLabels, "房主操作: 跳过奖励") {
+	if !strings.Contains(rewardLabels, "Host only: Skip reward") {
 		t.Fatalf("expected reward skip label in %q", rewardLabels)
 	}
 
@@ -438,31 +834,31 @@ func TestMultiplayerQuickActionsDescribeRewardShopAndEventNames(t *testing.T) {
 		"phase":"shop",
 		"self_id":"host",
 		"host_id":"host",
-		"examples":["buy 1","leave"],
-		"shop":{"gold":120,"offers":[{"index":1,"kind":"card","name":"Quick Slash","description":"Deal 7 damage","price":65}]}
+		"examples":["buy 2","leave"],
+		"shop":{"gold":90,"offers":[{"index":2,"name":"Guard","description":"Gain 5 block","price":40}]}
 	}`), shop); err != nil {
 		t.Fatalf("json.Unmarshal(shop) error = %v", err)
 	}
 	shopLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(shop)), " | ")
-	if !strings.Contains(shopLabels, "房主操作: 购买 Quick Slash (65 金币)") {
+	if !strings.Contains(shopLabels, "Host only: Buy Guard (40 gold)") {
 		t.Fatalf("expected named shop label in %q", shopLabels)
 	}
-	if !strings.Contains(shopLabels, "房主操作: 离开商店") {
-		t.Fatalf("expected shop leave label in %q", shopLabels)
+	if !strings.Contains(shopLabels, "Host only: Leave the shop") {
+		t.Fatalf("expected leave shop label in %q", shopLabels)
 	}
 
-	event := &netplay.Snapshot{Phase: "event", SelfID: "guest", HostID: "host"}
+	event := &netplay.Snapshot{Phase: "event", SelfID: "host", HostID: "host"}
 	if err := json.Unmarshal([]byte(`{
 		"phase":"event",
-		"self_id":"guest",
+		"self_id":"host",
 		"host_id":"host",
 		"examples":["choose 1"],
-		"event":{"name":"Ancient Device","description":"...","choices":[{"index":1,"label":"Inspect","description":"Take a closer look"}]}
+		"event":{"name":"Shrine","description":"A strange shrine.","choices":[{"index":1,"label":"Pray","description":"Gain a blessing."}]}
 	}`), event); err != nil {
 		t.Fatalf("json.Unmarshal(event) error = %v", err)
 	}
 	eventLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(event)), " | ")
-	if !strings.Contains(eventLabels, "仅房主: 选择事件 1: Inspect") {
+	if !strings.Contains(eventLabels, "Host only: Choose event 1: Pray") {
 		t.Fatalf("expected named event label in %q", eventLabels)
 	}
 }
@@ -490,7 +886,7 @@ func TestMultiplayerCombatBuildsCardAndPotionCommands(t *testing.T) {
 				{"index":1,"name":"Strike","cost":1,"summary":"Deal 6 damage","target_hint":"Single enemy"},
 				{"index":2,"name":"Guard Ally","cost":1,"summary":"Gain 6 block","target_hint":"Single ally"}
 			],
-			"potions":["小型回复剂"]
+            "potions":["Smoke Bomb"]
 		}
 	}`)
 	if err := json.Unmarshal(jsonBlob, &snapshot); err != nil {
@@ -529,6 +925,52 @@ func TestMultiplayerCombatBuildsCardAndPotionCommands(t *testing.T) {
 	}
 	if cmd.Action != "potion" || cmd.ItemIndex != 1 || cmd.TargetKind != "ally" || cmd.TargetIndex != 2 {
 		t.Fatalf("expected potion command targeting ally 2, got %#v", cmd)
+	}
+}
+
+func TestMultiplayerCombatSubmitThrottlePreventsRapidRepeat(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	session, commands := startCommandCaptureSession(t)
+
+	var snapshot netplay.Snapshot
+	if err := json.Unmarshal([]byte(`{
+		"phase":"combat",
+		"self_id":"seat-1",
+		"host_id":"seat-1",
+		"combat":{
+			"turn":1,
+			"energy":3,
+			"max_energy":3,
+			"party":[{"index":1,"name":"Host","hp":50,"max_hp":60,"block":0}],
+			"enemies":[{"index":1,"name":"Slime","hp":18,"max_hp":24,"block":0,"intent":"Attack"}],
+			"hand":[{"index":1,"name":"Strike","cost":1,"summary":"Deal 6 damage","target_hint":"Single enemy"}]
+		}
+	}`), &snapshot); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), nil)
+	m.multiplayerSession = session
+	m.multiplayerSnapshot = &snapshot
+	m.screen = screenMultiplayerRoom
+	m.now = func() time.Time { return time.Unix(1700000000, 0) }
+	m.syncMultiplayerRoomSelection()
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m1 := next.(model)
+	command := mustReceiveCommand(t, commands)
+	if command["action"] != "play" {
+		t.Fatalf("expected play command, got %#v", command)
+	}
+
+	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := next.(model)
+	ensureNoSecondCommand(t, commands)
+	if !strings.Contains(m2.message, "操作过快") {
+		t.Fatalf("expected throttle message, got %q", m2.message)
 	}
 }
 
@@ -627,6 +1069,52 @@ func TestMultiplayerStructuredCommandsCoverRewardShopAndSummary(t *testing.T) {
 	}
 	if cmd.Action != "abandon" {
 		t.Fatalf("expected summary abandon command, got %#v", cmd)
+	}
+}
+
+func TestMultiplayerMapSubmitThrottlePreventsRapidRepeat(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	session, commands := startCommandCaptureSession(t)
+
+	var snapshot netplay.Snapshot
+	if err := json.Unmarshal([]byte(`{
+		"phase":"map",
+		"self_id":"seat-1",
+		"host_id":"seat-1",
+		"map":{
+			"act":1,
+			"next_floor":2,
+			"reachable":[
+				{"index":1,"floor":2,"kind":"monster","label":"A1 F2 Monster"},
+				{"index":2,"floor":2,"kind":"shop","label":"A1 F2 Shop"}
+			]
+		}
+	}`), &snapshot); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	m := newModel(lib, storage.NewStore(t.TempDir()), engine.DefaultProfile(lib), nil)
+	m.multiplayerSession = session
+	m.multiplayerSnapshot = &snapshot
+	m.screen = screenMultiplayerRoom
+	m.now = func() time.Time { return time.Unix(1700000000, 0) }
+	m.syncMultiplayerRoomSelection()
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m1 := next.(model)
+	command := mustReceiveCommand(t, commands)
+	if command["action"] != "node" {
+		t.Fatalf("expected node command, got %#v", command)
+	}
+
+	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := next.(model)
+	ensureNoSecondCommand(t, commands)
+	if !strings.Contains(m2.message, "操作过快") {
+		t.Fatalf("expected throttle message, got %q", m2.message)
 	}
 }
 
@@ -828,7 +1316,7 @@ func DisabledTestProgramCanOpenCodexAndFlipToThirdPage(t *testing.T) {
 	}
 
 	view := got.View()
-	if !strings.Contains(view, "共 46 项 / 5 页") {
+	if !strings.Contains(view, "46") || !strings.Contains(view, "5") {
 		t.Fatalf("expected codex view to show 46 cards and 5 pages, got view: %s", view)
 	}
 }
@@ -971,6 +1459,52 @@ func TestQuitSavesCheckpointFromNodeScreen(t *testing.T) {
 	}
 	if loadedRun.Checkpoint.CurrentNode == nil || loadedRun.Checkpoint.CurrentNode.ID != "shop-node" {
 		t.Fatalf("expected current node to be saved on quit, got %#v", loadedRun.Checkpoint.CurrentNode)
+	}
+}
+
+func TestShopAugmentServiceUsesDeckActionFlow(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	store := storage.NewStore(t.TempDir())
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 42)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	run.Player.Gold = 200
+	m := newModel(lib, store, engine.DefaultProfile(lib), run)
+	m.screen = screenShop
+	m.shopState = &engine.ShopState{Offers: []engine.ShopOffer{{
+		ID:          "service-echo-workshop",
+		Kind:        "service",
+		Name:        "Echo Workshop",
+		Description: "Choose a card and grant it an extra echo this combat.",
+		Price:       66,
+		ItemID:      "service_echo_workshop",
+	}}}
+	m.currentNode = engine.Node{ID: "shop-node", Act: 1, Floor: 2, Index: 0, Kind: engine.NodeShop}
+
+	next, _ := m.updateShop(tea.KeyMsg{Type: tea.KeyEnter})
+	m1 := next.(model)
+	if m1.screen != screenDeckAct {
+		t.Fatalf("expected deck action screen, got %q", m1.screen)
+	}
+	if m1.deckActionMode != "shop_augment_card" {
+		t.Fatalf("expected shop_augment_card mode, got %q", m1.deckActionMode)
+	}
+	if len(m1.deckActionIndexes) == 0 {
+		t.Fatal("expected candidate cards for shop augment flow")
+	}
+
+	next, _ = m1.updateDeckAction(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := next.(model)
+	if m2.screen != screenShop {
+		t.Fatalf("expected to return to shop after resolving augment service, got %q", m2.screen)
+	}
+	if len(m2.run.Player.Deck[m1.deckActionIndexes[0]].Augments) != 1 {
+		t.Fatalf("expected selected card to gain augment, got %#v", m2.run.Player.Deck[m1.deckActionIndexes[0]].Augments)
 	}
 }
 

@@ -47,10 +47,11 @@
   {
     "id": "aegis_shard",
     "name": "壁垒碎片",
-    "description": "受到伤害时减少 2 点。",
+    "description": "受到伤害时减少 2 点，药水栏位 +1。",
     "rarity": "rare",
     "effects": [
-      {"op": "modify_taken_damage", "trigger": "incoming_damage", "value": -2}
+      {"op": "modify_taken_damage", "trigger": "incoming_damage", "value": -2},
+      {"op": "potion_capacity", "value": 1}
     ]
   },
   {

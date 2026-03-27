@@ -110,7 +110,9 @@ func StartEncounter(lib *content.Library, run *RunState, node Node) (*CombatStat
 		return nil, fmt.Errorf("no encounters available for %s act %d", kind, node.Act)
 	}
 	rewardBasis := aggregateEncounterGroup(encounters, kind, node.Act)
-	return NewCombatWithEnemies(lib, run.Player, encounters, rewardBasis, run.Seed+int64(node.Floor*101+node.Index)), nil
+	combatPlayer, persistedPlayer := PreparePlayerForCombat(run.Player)
+	run.Player = persistedPlayer
+	return NewCombatWithEnemies(lib, combatPlayer, encounters, rewardBasis, run.Seed+int64(node.Floor*101+node.Index)), nil
 }
 
 func randomEncounter(lib *content.Library, run *RunState, kind string, act int) content.EncounterDef {
@@ -301,26 +303,7 @@ func StartShop(lib *content.Library, run *RunState) ShopState {
 			Price:       ShopRemovePrice(run),
 		},
 	}
-	if effectivePartySize(run) > 1 {
-		offers = append(offers,
-			ShopOffer{
-				ID:          "service-coop-card",
-				Kind:        "service",
-				Name:        "协同简报",
-				Description: "获得一张随机联机协作牌。",
-				Price:       64,
-				ItemID:      "service_coop_card",
-			},
-			ShopOffer{
-				ID:          "service-combo-drill",
-				Kind:        "service",
-				Name:        "连携操练",
-				Description: "随机强化一张可升级牌并恢复 10 生命。",
-				Price:       72,
-				ItemID:      "service_combo_drill",
-			},
-		)
-	}
+	offers = append(offers, availableShopServices(lib, run)...)
 
 	for i := 0; i < min(2, len(classCards)); i++ {
 		idx := rng.Intn(len(classCards))
@@ -413,6 +396,15 @@ func ApplyShopPurchase(lib *content.Library, run *RunState, shop *ShopState, off
 	if err != nil {
 		return err
 	}
+	if offer.Kind == "service" {
+		plan, err := ShopOfferDeckActionPlan(lib, run, shop, offerID)
+		if err != nil {
+			return err
+		}
+		if plan != nil {
+			return fmt.Errorf("service %q requires card selection", offer.Name)
+		}
+	}
 	if run.Player.Gold < offer.Price {
 		return fmt.Errorf("金币不足")
 	}
@@ -445,7 +437,7 @@ func ApplyShopPurchase(lib *content.Library, run *RunState, shop *ShopState, off
 		}
 		shop.Log = append(shop.Log, logLine)
 	case "potion":
-		addPotion(&run.Player, offer.ItemID)
+		addPotion(lib, &run.Player, offer.ItemID)
 		shop.Log = append(shop.Log, "购入药水 "+lib.Potions[offer.ItemID].Name)
 	case "service":
 		if err := applyShopService(lib, run, shop, offer.ItemID); err != nil {
@@ -474,15 +466,19 @@ func ApplyShopEquipmentPurchase(lib *content.Library, run *RunState, shop *ShopS
 }
 
 func ResolveEvent(lib *content.Library, run *RunState, state *EventState, choiceID string) error {
-	return ResolveEventDecision(lib, run, state, choiceID, true)
+	return ResolveEventDecisionWithDeckChoice(lib, run, state, choiceID, true, -1)
 }
 
 func ResolveEventDecision(lib *content.Library, run *RunState, state *EventState, choiceID string, takeEquipment bool) error {
+	return ResolveEventDecisionWithDeckChoice(lib, run, state, choiceID, takeEquipment, -1)
+}
+
+func ResolveEventDecisionWithDeckChoice(lib *content.Library, run *RunState, state *EventState, choiceID string, takeEquipment bool, deckIndex int) error {
 	for _, choice := range state.Event.Choices {
 		if choice.ID != choiceID {
 			continue
 		}
-		lines, err := applyOutOfCombatEffectsDecision(lib, &run.Player, choice.Effects, takeEquipment)
+		lines, err := applyOutOfCombatEffectsDecision(lib, &run.Player, choice.Effects, takeEquipment, deckIndex)
 		if err != nil {
 			return err
 		}
@@ -494,9 +490,31 @@ func ResolveEventDecision(lib *content.Library, run *RunState, state *EventState
 	return fmt.Errorf("event choice %q not found", choiceID)
 }
 
+func EventChoiceDeckActionPlan(lib *content.Library, run *RunState, choice content.EventChoiceDef, takeEquipment bool) (*DeckActionPlan, error) {
+	for _, effect := range choice.Effects {
+		if effect.Op != "augment_card" {
+			continue
+		}
+		plan, err := BuildAugmentDeckActionPlan(lib, run.Player, effect, choice.Label, takeEquipment)
+		if err != nil || plan != nil {
+			return plan, err
+		}
+	}
+	return nil, nil
+}
+
 func EventChoiceEquipmentID(choice content.EventChoiceDef) string {
 	for _, effect := range choice.Effects {
 		if effect.Op == "gain_equipment" {
+			return effect.ItemID
+		}
+	}
+	return ""
+}
+
+func EventChoicePotionID(choice content.EventChoiceDef) string {
+	for _, effect := range choice.Effects {
+		if effect.Op == "gain_potion" {
 			return effect.ItemID
 		}
 	}
@@ -541,6 +559,8 @@ func ApplyCombatResult(lib *content.Library, run *RunState, node Node, combat *C
 }
 
 func ApplyCombatResultDecision(lib *content.Library, run *RunState, node Node, combat *CombatState, rewardChoice string, takeEquipment bool) error {
+	seatIndex := CombatSeatIndexForRun(combat, run)
+	applyCombatMetricsToRun(run, CombatMetricsForSeat(combat, seatIndex), CombatTurns(combat))
 	if combat.Lost {
 		run.Status = RunStatusLost
 		run.Player.HP = 0
@@ -552,7 +572,7 @@ func ApplyCombatResultDecision(lib *content.Library, run *RunState, node Node, c
 		run.Player.Deck = append(run.Player.Deck, DeckCard{CardID: rewardChoice})
 	}
 	if combat.Reward.PotionID != "" {
-		addPotion(&run.Player, combat.Reward.PotionID)
+		addPotion(lib, &run.Player, combat.Reward.PotionID)
 	}
 	if combat.Reward.RelicID != "" {
 		addRelic(&run.Player, combat.Reward.RelicID)
@@ -653,10 +673,50 @@ func BuildReward(lib *content.Library, run *RunState, node Node, encounter conte
 	return reward
 }
 
-func addPotion(player *PlayerState, potionID string) {
-	if len(player.Potions) < player.PotionCapacity {
-		player.Potions = append(player.Potions, potionID)
+func EffectivePotionCapacity(lib *content.Library, player PlayerState) int {
+	capacity := max(0, player.PotionCapacity)
+	for _, relicID := range player.Relics {
+		relic, ok := lib.Relics[relicID]
+		if !ok {
+			continue
+		}
+		for _, effect := range relic.Effects {
+			if effect.Op == "potion_capacity" {
+				capacity += max(0, effect.Value)
+			}
+		}
 	}
+	for _, equipmentID := range []string{player.Equipment.Weapon, player.Equipment.Armor, player.Equipment.Accessory} {
+		if equipmentID == "" {
+			continue
+		}
+		equipment, ok := lib.Equipments[equipmentID]
+		if !ok {
+			continue
+		}
+		for _, effect := range equipment.Effects {
+			if effect.Op == "potion_capacity" {
+				capacity += max(0, effect.Value)
+			}
+		}
+	}
+	return max(0, capacity)
+}
+
+func addPotion(lib *content.Library, player *PlayerState, potionID string) bool {
+	if len(player.Potions) >= EffectivePotionCapacity(lib, *player) {
+		return false
+	}
+	player.Potions = append(player.Potions, potionID)
+	return true
+}
+
+func ReplacePotion(player *PlayerState, index int, potionID string) error {
+	if index < 0 || index >= len(player.Potions) {
+		return fmt.Errorf("invalid potion slot %d", index)
+	}
+	player.Potions[index] = potionID
+	return nil
 }
 
 func equipItem(lib *content.Library, player *PlayerState, equipmentID string) (string, error) {
@@ -679,10 +739,10 @@ func equipItem(lib *content.Library, player *PlayerState, equipmentID string) (s
 }
 
 func applyOutOfCombatEffects(lib *content.Library, player *PlayerState, effects []content.Effect) ([]string, error) {
-	return applyOutOfCombatEffectsDecision(lib, player, effects, true)
+	return applyOutOfCombatEffectsDecision(lib, player, effects, true, -1)
 }
 
-func applyOutOfCombatEffectsDecision(lib *content.Library, player *PlayerState, effects []content.Effect, takeEquipment bool) ([]string, error) {
+func applyOutOfCombatEffectsDecision(lib *content.Library, player *PlayerState, effects []content.Effect, takeEquipment bool, deckIndex int) ([]string, error) {
 	logs := []string{}
 	for _, effect := range effects {
 		switch effect.Op {
@@ -722,7 +782,7 @@ func applyOutOfCombatEffectsDecision(lib *content.Library, player *PlayerState, 
 			}
 			logs = append(logs, "获得装备 "+lib.Equipments[effect.ItemID].Name)
 		case "gain_potion":
-			addPotion(player, effect.ItemID)
+			addPotion(lib, player, effect.ItemID)
 			logs = append(logs, "获得药水 "+lib.Potions[effect.ItemID].Name)
 		case "add_card":
 			player.Deck = append(player.Deck, DeckCard{CardID: effect.CardID})
@@ -734,6 +794,12 @@ func applyOutOfCombatEffectsDecision(lib *content.Library, player *PlayerState, 
 				player.Deck[idx].Upgraded = true
 				logs = append(logs, "随机强化了 "+lib.Cards[player.Deck[idx].CardID].Name)
 			}
+		case "augment_card":
+			lines, err := ApplyDeckCardAugmentEffect(lib, player, effect, deckIndex)
+			if err != nil {
+				return nil, err
+			}
+			logs = append(logs, lines...)
 		default:
 			return nil, fmt.Errorf("unsupported out-of-combat effect %s", effect.Op)
 		}

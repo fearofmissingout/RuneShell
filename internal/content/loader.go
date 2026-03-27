@@ -26,6 +26,10 @@ var validOps = map[string]struct{}{
 	"upgrade_card":        {},
 	"add_card":            {},
 	"gain_energy":         {},
+	"potion_capacity":     {},
+	"repeat_next_card":    {},
+	"reply":               {},
+	"augment_card":        {},
 }
 
 func LoadEmbedded() (*Library, error) {
@@ -250,6 +254,24 @@ func validateEffects(scope string, effects []Effect) error {
 		}
 		if effect.Op == "upgrade_relic" && (effect.ItemID == "" || effect.ResultID == "") {
 			return fmt.Errorf("%s: upgrade_relic requires item_id and result_id", scope)
+		}
+		if effect.Op == "augment_card" {
+			if len(effect.Effects) == 0 {
+				return fmt.Errorf("%s: augment_card requires nested effects", scope)
+			}
+			switch effect.Scope {
+			case "", "run", "combat", "turn":
+			default:
+				return fmt.Errorf("%s: augment_card has invalid scope %q", scope, effect.Scope)
+			}
+			switch effect.Selector {
+			case "", "choose", "all", "choose_upgradable", "all_upgradable":
+			default:
+				return fmt.Errorf("%s: augment_card has invalid selector %q", scope, effect.Selector)
+			}
+			if err := validateEffects(scope+": augment_card", effect.Effects); err != nil {
+				return err
+			}
 		}
 		if (effect.Op == "apply_status" || effect.Op == "cleanse_status") && effect.Status == "" {
 			return fmt.Errorf("%s: %s requires status", scope, effect.Op)

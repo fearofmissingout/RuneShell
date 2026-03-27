@@ -16,35 +16,35 @@ import (
 const roomStateVersion = 1
 
 type persistedRoomState struct {
-	Version            int                         `json:"version"`
-	HostID             string                      `json:"host_id"`
-	NextID             int                         `json:"next_id"`
-	Order              []string                    `json:"order"`
-	Players            map[string]roomPlayer       `json:"players"`
-	Phase              string                      `json:"phase"`
-	Mode               engine.GameMode             `json:"mode"`
-	Seed               int64                       `json:"seed"`
-	ChatLog            []string                    `json:"chat_log,omitempty"`
-	RoomLog            []string                    `json:"room_log"`
-	HostTransfer       *hostTransferRequest        `json:"host_transfer,omitempty"`
-	Run                *engine.RunState            `json:"run,omitempty"`
-	PartyMembers       []engine.PlayerState        `json:"party_members,omitempty"`
-	CurrentNode        engine.Node                 `json:"current_node,omitempty"`
-	Combat             *engine.CombatState         `json:"combat,omitempty"`
-	Reward             *engine.RewardState         `json:"reward,omitempty"`
-	EventState         *engine.EventState          `json:"event_state,omitempty"`
-	ShopState          *engine.ShopState           `json:"shop_state,omitempty"`
-	RestLog            []string                    `json:"rest_log,omitempty"`
-	EquipOffer         *engine.EquipmentOfferState `json:"equip_offer,omitempty"`
-	EquipFrom          string                      `json:"equip_from,omitempty"`
-	RewardCard         string                      `json:"reward_card,omitempty"`
-	ShopOfferID        string                      `json:"shop_offer_id,omitempty"`
-	EventChoice        string                      `json:"event_choice,omitempty"`
-	DeckActionMode     string                      `json:"deck_action_mode,omitempty"`
-	DeckActionTitle    string                      `json:"deck_action_title,omitempty"`
-	DeckActionSubtitle string                      `json:"deck_action_subtitle,omitempty"`
-	DeckActionIndexes  []int                       `json:"deck_action_indexes,omitempty"`
-	DeckActionPrice    int                         `json:"deck_action_price,omitempty"`
+	Version             int                         `json:"version"`
+	HostID              string                      `json:"host_id"`
+	NextID              int                         `json:"next_id"`
+	Order               []string                    `json:"order"`
+	Players             map[string]roomPlayer       `json:"players"`
+	Phase               string                      `json:"phase"`
+	Mode                engine.GameMode             `json:"mode"`
+	Seed                int64                       `json:"seed"`
+	ChatLog             []string                    `json:"chat_log,omitempty"`
+	RoomLog             []string                    `json:"room_log"`
+	HostTransfer        *hostTransferRequest        `json:"host_transfer,omitempty"`
+	Run                 *engine.RunState            `json:"run,omitempty"`
+	SeatStates          map[string]seatRunState     `json:"seat_states,omitempty"`
+	CurrentNode         engine.Node                 `json:"current_node,omitempty"`
+	Combat              *engine.CombatState         `json:"combat,omitempty"`
+	RestLog             []string                    `json:"rest_log,omitempty"`
+	FlowOwner           string                      `json:"flow_owner,omitempty"`
+	EquipOffer          *engine.EquipmentOfferState `json:"equip_offer,omitempty"`
+	EquipFrom           string                      `json:"equip_from,omitempty"`
+	RewardCard          string                      `json:"reward_card,omitempty"`
+	ShopOfferID         string                      `json:"shop_offer_id,omitempty"`
+	EventChoice         string                      `json:"event_choice,omitempty"`
+	DeckActionMode      string                      `json:"deck_action_mode,omitempty"`
+	DeckActionTitle     string                      `json:"deck_action_title,omitempty"`
+	DeckActionSubtitle  string                      `json:"deck_action_subtitle,omitempty"`
+	DeckActionIndexes   []int                       `json:"deck_action_indexes,omitempty"`
+	DeckActionPrice     int                         `json:"deck_action_price,omitempty"`
+	DeckActionEffect    *content.Effect             `json:"deck_action_effect,omitempty"`
+	DeckActionTakeEquip bool                        `json:"deck_action_take_equip,omitempty"`
 }
 
 func roomSavePath(baseDir string) string {
@@ -65,16 +65,17 @@ func newServerWithSavePath(lib *content.Library, addr, savePath string) (*server
 		return nil, err
 	}
 	return &server{
-		lib:      lib,
-		roomAddr: listener.Addr().String(),
-		listener: listener,
-		savePath: savePath,
-		players:  map[string]*roomPlayer{},
-		clients:  map[string]*clientConn{},
-		phase:    phaseLobby,
-		mode:     engine.ModeStory,
-		seed:     time.Now().UnixNano(),
-		chatLog:  []string{},
+		lib:        lib,
+		roomAddr:   listener.Addr().String(),
+		listener:   listener,
+		savePath:   savePath,
+		players:    map[string]*roomPlayer{},
+		seatStates: map[string]*seatRunState{},
+		clients:    map[string]*clientConn{},
+		phase:      phaseLobby,
+		mode:       engine.ModeStory,
+		seed:       time.Now().UnixNano(),
+		chatLog:    []string{},
 		roomLog: []string{
 			formatChannelEntry("System", "", "Room created. Players can use `class <id>` and `ready`."),
 			formatChannelEntry("System", "", "Host can use `mode story|endless`, `seed <n>`, and `start`."),
@@ -107,44 +108,65 @@ func loadServerFromSavePath(lib *content.Library, addr, savePath string) (*serve
 	}
 
 	srv := &server{
-		lib:                lib,
-		roomAddr:           listener.Addr().String(),
-		listener:           listener,
-		savePath:           savePath,
-		nextID:             state.NextID,
-		hostID:             state.HostID,
-		order:              append([]string{}, state.Order...),
-		players:            map[string]*roomPlayer{},
-		clients:            map[string]*clientConn{},
-		phase:              state.Phase,
-		mode:               state.Mode,
-		seed:               state.Seed,
-		chatLog:            append([]string{}, state.ChatLog...),
-		roomLog:            append([]string{}, state.RoomLog...),
-		hostTransfer:       state.HostTransfer,
-		run:                state.Run,
-		partyMembers:       clonePartyStates(state.PartyMembers),
-		currentNode:        state.CurrentNode,
-		combat:             state.Combat,
-		reward:             state.Reward,
-		eventState:         state.EventState,
-		shopState:          state.ShopState,
-		restLog:            append([]string{}, state.RestLog...),
-		equipOffer:         state.EquipOffer,
-		equipFrom:          state.EquipFrom,
-		rewardCard:         state.RewardCard,
-		shopOfferID:        state.ShopOfferID,
-		eventChoice:        state.EventChoice,
-		deckActionMode:     state.DeckActionMode,
-		deckActionTitle:    state.DeckActionTitle,
-		deckActionSubtitle: state.DeckActionSubtitle,
-		deckActionIndexes:  append([]int{}, state.DeckActionIndexes...),
-		deckActionPrice:    state.DeckActionPrice,
+		lib:                 lib,
+		roomAddr:            listener.Addr().String(),
+		listener:            listener,
+		savePath:            savePath,
+		nextID:              state.NextID,
+		hostID:              state.HostID,
+		order:               append([]string{}, state.Order...),
+		players:             map[string]*roomPlayer{},
+		clients:             map[string]*clientConn{},
+		phase:               state.Phase,
+		mode:                state.Mode,
+		seed:                state.Seed,
+		chatLog:             append([]string{}, state.ChatLog...),
+		roomLog:             append([]string{}, state.RoomLog...),
+		hostTransfer:        state.HostTransfer,
+		run:                 state.Run,
+		seatStates:          map[string]*seatRunState{},
+		currentNode:         state.CurrentNode,
+		combat:              state.Combat,
+		restLog:             append([]string{}, state.RestLog...),
+		flowOwner:           state.FlowOwner,
+		equipOffer:          state.EquipOffer,
+		equipFrom:           state.EquipFrom,
+		rewardCard:          state.RewardCard,
+		shopOfferID:         state.ShopOfferID,
+		eventChoice:         state.EventChoice,
+		deckActionMode:      state.DeckActionMode,
+		deckActionTitle:     state.DeckActionTitle,
+		deckActionSubtitle:  state.DeckActionSubtitle,
+		deckActionIndexes:   append([]int{}, state.DeckActionIndexes...),
+		deckActionPrice:     state.DeckActionPrice,
+		deckActionEffect:    state.DeckActionEffect,
+		deckActionTakeEquip: state.DeckActionTakeEquip,
 	}
 	for id, player := range state.Players {
 		player.Connected = false
 		copied := player
 		srv.players[id] = &copied
+	}
+	for id, seat := range state.SeatStates {
+		copied := seat
+		if seat.Run != nil {
+			runCopy := *seat.Run
+			copied.Run = &runCopy
+		}
+		if seat.Reward != nil {
+			rewardCopy := *seat.Reward
+			copied.Reward = &rewardCopy
+		}
+		if seat.Event != nil {
+			eventCopy := *seat.Event
+			copied.Event = &eventCopy
+		}
+		if seat.Shop != nil {
+			shopCopy := *seat.Shop
+			copied.Shop = &shopCopy
+		}
+		copied.RestLog = append([]string{}, seat.RestLog...)
+		srv.seatStates[id] = &copied
 	}
 	return srv, true, nil
 }
@@ -166,35 +188,59 @@ func (s *server) persistLocked() error {
 		players[id] = copied
 	}
 	state := persistedRoomState{
-		Version:            roomStateVersion,
-		HostID:             s.hostID,
-		NextID:             s.nextID,
-		Order:              append([]string{}, s.order...),
-		Players:            players,
-		Phase:              s.phase,
-		Mode:               s.mode,
-		Seed:               s.seed,
-		ChatLog:            append([]string{}, s.chatLog...),
-		RoomLog:            append([]string{}, s.roomLog...),
-		HostTransfer:       s.hostTransfer,
-		Run:                s.run,
-		PartyMembers:       clonePartyStates(s.partyMembers),
-		CurrentNode:        s.currentNode,
-		Combat:             s.combat,
-		Reward:             s.reward,
-		EventState:         s.eventState,
-		ShopState:          s.shopState,
-		RestLog:            append([]string{}, s.restLog...),
-		EquipOffer:         s.equipOffer,
-		EquipFrom:          s.equipFrom,
-		RewardCard:         s.rewardCard,
-		ShopOfferID:        s.shopOfferID,
-		EventChoice:        s.eventChoice,
-		DeckActionMode:     s.deckActionMode,
-		DeckActionTitle:    s.deckActionTitle,
-		DeckActionSubtitle: s.deckActionSubtitle,
-		DeckActionIndexes:  append([]int{}, s.deckActionIndexes...),
-		DeckActionPrice:    s.deckActionPrice,
+		Version:             roomStateVersion,
+		HostID:              s.hostID,
+		NextID:              s.nextID,
+		Order:               append([]string{}, s.order...),
+		Players:             players,
+		Phase:               s.phase,
+		Mode:                s.mode,
+		Seed:                s.seed,
+		ChatLog:             append([]string{}, s.chatLog...),
+		RoomLog:             append([]string{}, s.roomLog...),
+		HostTransfer:        s.hostTransfer,
+		Run:                 s.run,
+		SeatStates:          map[string]seatRunState{},
+		CurrentNode:         s.currentNode,
+		Combat:              s.combat,
+		RestLog:             append([]string{}, s.restLog...),
+		FlowOwner:           s.flowOwner,
+		EquipOffer:          s.equipOffer,
+		EquipFrom:           s.equipFrom,
+		RewardCard:          s.rewardCard,
+		ShopOfferID:         s.shopOfferID,
+		EventChoice:         s.eventChoice,
+		DeckActionMode:      s.deckActionMode,
+		DeckActionTitle:     s.deckActionTitle,
+		DeckActionSubtitle:  s.deckActionSubtitle,
+		DeckActionIndexes:   append([]int{}, s.deckActionIndexes...),
+		DeckActionPrice:     s.deckActionPrice,
+		DeckActionEffect:    s.deckActionEffect,
+		DeckActionTakeEquip: s.deckActionTakeEquip,
+	}
+	for id, seat := range s.seatStates {
+		if seat == nil {
+			continue
+		}
+		copied := *seat
+		if seat.Run != nil {
+			runCopy := *seat.Run
+			copied.Run = &runCopy
+		}
+		if seat.Reward != nil {
+			rewardCopy := *seat.Reward
+			copied.Reward = &rewardCopy
+		}
+		if seat.Event != nil {
+			eventCopy := *seat.Event
+			copied.Event = &eventCopy
+		}
+		if seat.Shop != nil {
+			shopCopy := *seat.Shop
+			copied.Shop = &shopCopy
+		}
+		copied.RestLog = append([]string{}, seat.RestLog...)
+		state.SeatStates[id] = copied
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {

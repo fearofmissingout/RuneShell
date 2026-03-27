@@ -23,6 +23,7 @@ const (
 	screenClass             screen = "class"
 	screenMap               screen = "map"
 	screenCombat            screen = "combat"
+	screenPotionReplace     screen = "potion_replace"
 	screenReward            screen = "reward"
 	screenEquip             screen = "equip"
 	screenDeckAct           screen = "deck_action"
@@ -45,7 +46,7 @@ const (
 	menuEndless     = "无尽模式"
 	menuProfile     = "档案"
 	menuMultiplayer = "多人模式"
-	menuQuit        = "退出"
+	menuQuit        = "Quit"
 )
 
 type multiplayerLaunchKind string
@@ -72,6 +73,8 @@ type keyMap struct {
 	Right   key.Binding
 	Select  key.Binding
 	Cycle   key.Binding
+	Map     key.Binding
+	Stats   key.Binding
 	Back    key.Binding
 	EndTurn key.Binding
 	Potion  key.Binding
@@ -82,13 +85,13 @@ type keyMap struct {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.Select, k.Cycle, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.Select, k.Cycle, k.Map, k.Stats, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
-		{k.Select, k.Cycle},
+		{k.Select, k.Cycle, k.Map, k.Stats},
 		{k.EndTurn, k.Potion, k.Skip, k.Leave},
 		{k.Back, k.Help, k.Quit},
 	}
@@ -97,6 +100,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 type model struct {
 	width                      int
 	height                     int
+	now                        func() time.Time
 	keys                       keyMap
 	help                       help.Model
 	theme                      ui.Theme
@@ -113,6 +117,10 @@ type model struct {
 	classes                    []content.ClassDef
 	combat                     *engine.CombatState
 	combatPane                 int
+	combatTopPage              int
+	combatLogPage              int
+	combatPotionIndex          int
+	combatPotionMode           bool
 	combatTarget               engine.CombatTarget
 	reward                     *engine.RewardState
 	equipOffer                 *engine.EquipmentOfferState
@@ -129,6 +137,8 @@ type model struct {
 	deckActionSubtitle         string
 	deckActionIndexes          []int
 	deckActionPrice            int
+	deckActionEffect           *content.Effect
+	deckActionTakeEquip        bool
 	codexTab                   int
 	profileTab                 int
 	multiplayerMenuItems       []string
@@ -151,6 +161,14 @@ type model struct {
 	multiplayerCombatTarget    multiplayerTargetState
 	multiplayerStructuredIndex int
 	multiplayerInspectPane     int
+	multiplayerCombatTopPage   int
+	multiplayerInspectLogPage  int
+	showMapOverlay             bool
+	showStatsOverlay           bool
+	pendingPotionID            string
+	pendingPotionResume        screen
+	pendingPotionAdvance       bool
+	lastActionAt               time.Time
 }
 
 func Run(lib *content.Library, store *storage.Store) error {
@@ -170,13 +188,14 @@ func Run(lib *content.Library, store *storage.Store) error {
 
 func newModel(lib *content.Library, store *storage.Store, profile engine.Profile, run *engine.RunState) model {
 	menuItems := menuItemsForRun(run)
-	createName := newMultiplayerInput("Host", "给自己起个房主名，例如 Host", 24)
-	createPort := newMultiplayerInput("7777", "局域网端口，例如 7777", 5)
-	joinAddr := newMultiplayerInput("127.0.0.1:7777", "输入房主地址，例如 127.0.0.1:7777", 64)
-	joinName := newMultiplayerInput("Guest", "给自己起个名字，例如 Guest", 24)
-	commandInput := newMultiplayerInput("", "输入联机指令，例如 ready、chat 大家好、node 1", 240)
+	createName := newMultiplayerInput("Host", "Choose a local display name", 24)
+	createPort := newMultiplayerInput("7777", "LAN port, for example 7777", 5)
+	joinAddr := newMultiplayerInput("127.0.0.1:7777", "Host address, for example 127.0.0.1:7777", 64)
+	joinName := newMultiplayerInput("Guest", "Choose a local display name", 24)
+	commandInput := newMultiplayerInput("", "Examples: ready, chat hello, node 1", 240)
 	commandInput.Width = 64
 	return model{
+		now:                       time.Now,
 		lib:                       lib,
 		store:                     store,
 		profile:                   profile,
@@ -186,7 +205,7 @@ func newModel(lib *content.Library, store *storage.Store, profile engine.Profile
 		help:                      help.New(),
 		menuItems:                 menuItems,
 		classes:                   lib.ClassList(),
-		multiplayerMenuItems:      []string{"创建房间", "加入房间", "返回主菜单"},
+		multiplayerMenuItems:      []string{"Create Room", "Join Room", "Back"},
 		multiplayerCreateName:     createName,
 		multiplayerCreatePort:     createPort,
 		multiplayerCreateClass:    classIndexByID(lib.ClassList(), "vanguard"),
@@ -196,19 +215,21 @@ func newModel(lib *content.Library, store *storage.Store, profile engine.Profile
 		multiplayerJoinClass:      classIndexByID(lib.ClassList(), "arcanist"),
 		multiplayerCommandInput:   commandInput,
 		keys: keyMap{
-			Left:    key.NewBinding(key.WithKeys("left", "pgup"), key.WithHelp("←/PgUp", "翻前页")),
-			Right:   key.NewBinding(key.WithKeys("right", "pgdown"), key.WithHelp("→/PgDn", "翻后页")),
-			Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "上移")),
-			Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "下移")),
-			Select:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认")),
-			Cycle:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "切换")),
-			Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "返回")),
-			EndTurn: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "结束回合")),
-			Potion:  key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "药水")),
-			Skip:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "跳过")),
-			Leave:   key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "离开")),
-			Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "帮助")),
-			Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "退出")),
+			Left:    key.NewBinding(key.WithKeys("left", "pgup"), key.WithHelp("left/PgUp", "prev page")),
+			Right:   key.NewBinding(key.WithKeys("right", "pgdown"), key.WithHelp("right/PgDn", "next page")),
+			Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("up/k", "up")),
+			Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("down/j", "down")),
+			Select:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
+			Cycle:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "cycle")),
+			Map:     key.NewBinding(key.WithKeys("m", "M"), key.WithHelp("m", "map")),
+			Stats:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "stats")),
+			Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+			EndTurn: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "end turn")),
+			Potion:  key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "potion")),
+			Skip:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "skip")),
+			Leave:   key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "leave")),
+			Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+			Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 		},
 	}
 }
@@ -233,25 +254,33 @@ func (m *model) saveCheckpoint() error {
 
 func (m *model) buildCheckpoint() *engine.RunCheckpoint {
 	switch m.screen {
-	case screenMap, screenCombat, screenReward, screenEquip, screenDeckAct, screenEvent, screenShop, screenRest:
+	case screenMap, screenCombat, screenPotionReplace, screenReward, screenEquip, screenDeckAct, screenEvent, screenShop, screenRest:
 	default:
 		return m.run.Checkpoint
 	}
 
 	checkpoint := &engine.RunCheckpoint{
-		Screen:             string(m.screen),
-		RestLog:            append([]string{}, m.restLog...),
-		EquipFrom:          m.equipFrom,
-		RewardCard:         m.rewardCard,
-		ShopOfferID:        m.shopOfferID,
-		EventChoice:        m.eventChoice,
-		DeckActionMode:     m.deckActionMode,
-		DeckActionTitle:    m.deckActionTitle,
-		DeckActionSubtitle: m.deckActionSubtitle,
-		DeckActionIndexes:  append([]int{}, m.deckActionIndexes...),
-		DeckActionPrice:    m.deckActionPrice,
-		CombatPane:         m.combatPane,
-		CombatTarget:       m.combatTarget,
+		Screen:               string(m.screen),
+		RestLog:              append([]string{}, m.restLog...),
+		EquipFrom:            m.equipFrom,
+		RewardCard:           m.rewardCard,
+		ShopOfferID:          m.shopOfferID,
+		EventChoice:          m.eventChoice,
+		DeckActionMode:       m.deckActionMode,
+		DeckActionTitle:      m.deckActionTitle,
+		DeckActionSubtitle:   m.deckActionSubtitle,
+		DeckActionIndexes:    append([]int{}, m.deckActionIndexes...),
+		DeckActionPrice:      m.deckActionPrice,
+		DeckActionTakeEquip:  m.deckActionTakeEquip,
+		CombatPane:           m.combatPane,
+		CombatTopPage:        m.combatTopPage,
+		CombatLogPage:        m.combatLogPage,
+		CombatPotionIndex:    m.combatPotionIndex,
+		CombatPotionMode:     m.combatPotionMode,
+		CombatTarget:         m.combatTarget,
+		PendingPotionID:      m.pendingPotionID,
+		PendingPotionResume:  string(m.pendingPotionResume),
+		PendingPotionAdvance: m.pendingPotionAdvance,
 	}
 	if m.currentNode.ID != "" {
 		node := m.currentNode
@@ -276,6 +305,10 @@ func (m *model) buildCheckpoint() *engine.RunCheckpoint {
 	if m.shopState != nil {
 		shopState := *m.shopState
 		checkpoint.ShopState = &shopState
+	}
+	if m.deckActionEffect != nil {
+		effect := *m.deckActionEffect
+		checkpoint.DeckActionEffect = &effect
 	}
 	return checkpoint
 }
@@ -306,10 +339,19 @@ func (m *model) restoreCheckpoint() {
 	m.deckActionSubtitle = cp.DeckActionSubtitle
 	m.deckActionIndexes = append([]int{}, cp.DeckActionIndexes...)
 	m.deckActionPrice = cp.DeckActionPrice
+	m.deckActionEffect = cp.DeckActionEffect
+	m.deckActionTakeEquip = cp.DeckActionTakeEquip
 	m.combatPane = cp.CombatPane
+	m.combatTopPage = cp.CombatTopPage
+	m.combatLogPage = cp.CombatLogPage
+	m.combatPotionIndex = cp.CombatPotionIndex
+	m.combatPotionMode = cp.CombatPotionMode
 	m.combatTarget = cp.CombatTarget
+	m.pendingPotionID = cp.PendingPotionID
+	m.pendingPotionResume = screen(cp.PendingPotionResume)
+	m.pendingPotionAdvance = cp.PendingPotionAdvance
 	switch screen(cp.Screen) {
-	case screenCombat, screenReward, screenEquip, screenDeckAct, screenEvent, screenShop, screenRest:
+	case screenCombat, screenPotionReplace, screenReward, screenEquip, screenDeckAct, screenEvent, screenShop, screenRest:
 		m.screen = screen(cp.Screen)
 	default:
 		m.screen = screenMap
@@ -333,9 +375,16 @@ func (m *model) resetNodeFlowState() {
 	m.restLog = nil
 	m.currentNode = engine.Node{}
 	m.combatPane = 0
+	m.combatTopPage = 0
+	m.combatLogPage = 0
+	m.combatPotionIndex = 0
+	m.combatPotionMode = false
 	m.combatTarget = engine.CombatTarget{}
+	m.showMapOverlay = false
+	m.showStatsOverlay = false
 	m.clearEquipmentFlowState()
 	m.clearDeckActionState()
+	m.clearPendingPotionState()
 }
 
 func (m *model) clearEquipmentFlowState() {
@@ -352,6 +401,15 @@ func (m *model) clearDeckActionState() {
 	m.deckActionSubtitle = ""
 	m.deckActionIndexes = nil
 	m.deckActionPrice = 0
+	m.deckActionEffect = nil
+	m.deckActionTakeEquip = false
+	m.shopOfferID = ""
+}
+
+func (m *model) clearPendingPotionState() {
+	m.pendingPotionID = ""
+	m.pendingPotionResume = ""
+	m.pendingPotionAdvance = false
 }
 
 func (m model) Init() tea.Cmd {
@@ -376,6 +434,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.help.ShowAll = !m.help.ShowAll
 			return m, nil
 		}
+		if m.showMapOverlay {
+			switch {
+			case key.Matches(msg, m.keys.Map), key.Matches(msg, m.keys.Back):
+				m.showMapOverlay = false
+			case msg.String() == "K" && m.canToggleStatsOverlay():
+				m.showMapOverlay = false
+				m.showStatsOverlay = true
+			}
+			return m, nil
+		}
+		if m.showStatsOverlay {
+			switch {
+			case msg.String() == "K", key.Matches(msg, m.keys.Back):
+				m.showStatsOverlay = false
+			case m.canToggleMapOverlay() && key.Matches(msg, m.keys.Map):
+				m.showStatsOverlay = false
+				m.showMapOverlay = true
+			}
+			return m, nil
+		}
+		if m.canToggleMapOverlay() && key.Matches(msg, m.keys.Map) {
+			m.showMapOverlay = true
+			return m, nil
+		}
+		if m.canToggleStatsOverlay() && msg.String() == "K" {
+			m.showStatsOverlay = true
+			return m, nil
+		}
 		switch m.screen {
 		case screenMenu:
 			return m.updateMenu(msg)
@@ -385,6 +471,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateMap(msg)
 		case screenCombat:
 			return m.updateCombat(msg)
+		case screenPotionReplace:
+			return m.updatePotionReplace(msg)
 		case screenReward:
 			return m.updateReward(msg)
 		case screenEquip:
@@ -444,12 +532,57 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message = msg.err.Error()
 			return m, clearMessage()
 		}
-		m.message = "联机会话已结束。"
+		m.message = "Multiplayer session closed."
 		return m, clearMessage()
 	case tickMsg:
 		m.message = ""
 	}
 	return m, nil
+}
+
+func (m model) canToggleMapOverlay() bool {
+	switch m.screen {
+	case screenMultiplayerRoom:
+		return m.multiplayerSnapshot != nil && (m.multiplayerSnapshot.Map != nil || m.multiplayerSnapshot.SharedMap != nil)
+	case screenMap, screenCombat, screenReward, screenEquip, screenDeckAct, screenEvent, screenShop, screenRest:
+		if m.run == nil || m.run.Status != engine.RunStatusActive {
+			return false
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func (m model) canToggleStatsOverlay() bool {
+	switch m.screen {
+	case screenMultiplayerRoom:
+		return m.multiplayerSnapshot != nil && m.multiplayerSnapshot.Stats != nil
+	case screenMap, screenCombat, screenReward, screenEquip, screenDeckAct, screenEvent, screenShop, screenRest:
+		return m.run != nil && m.run.Status == engine.RunStatusActive
+	default:
+		return false
+	}
+}
+
+func (m model) statsOverlayLines() (string, []string, []string) {
+	switch {
+	case m.screen == screenMultiplayerRoom && m.multiplayerSnapshot != nil && m.multiplayerSnapshot.Stats != nil:
+		stats := m.multiplayerSnapshot.Stats
+		title := "Multiplayer Stats"
+		if stats.SeatName != "" {
+			title = fmt.Sprintf("%s | %s", title, stats.SeatName)
+		}
+		return title, engine.FormatCombatMetrics(stats.Combat, stats.CombatTurns), engine.FormatCombatMetrics(stats.Run, stats.RunTurns)
+	case m.run != nil:
+		combatLines := engine.FormatCombatMetrics(engine.CombatMetrics{}, 0)
+		if m.combat != nil {
+			combatLines = engine.FormatCombatMetrics(engine.CombatMetricsForSeat(m.combat, 0), engine.CombatTurns(m.combat))
+		}
+		return "Solo Stats", combatLines, engine.FormatCombatMetrics(m.run.Stats.Metrics, m.run.Stats.CombatTurns)
+	default:
+		return "Stats", nil, nil
+	}
 }
 
 func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -553,6 +686,10 @@ func (m model) updateMap(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.combat = combat
 			m.combatPane = 0
+			m.combatTopPage = 0
+			m.combatLogPage = 0
+			m.combatPotionIndex = 0
+			m.combatPotionMode = false
 			engine.StartPlayerTurn(m.lib, m.run.Player, m.combat)
 			m.syncCombatTarget()
 			m.screen = screenCombat
@@ -584,12 +721,22 @@ func (m model) updateCombat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	changed := false
 	switch {
 	case key.Matches(msg, m.keys.Up):
-		if len(m.combat.Hand) > 0 {
+		if m.combatPotionMode {
+			if len(m.run.Player.Potions) > 0 {
+				m.combatPotionIndex = wrapIndex(m.combatPotionIndex-1, len(m.run.Player.Potions))
+				m.syncCombatTarget()
+			}
+		} else if len(m.combat.Hand) > 0 {
 			m.index = wrapIndex(m.index-1, len(m.combat.Hand))
 			m.syncCombatTarget()
 		}
 	case key.Matches(msg, m.keys.Down):
-		if len(m.combat.Hand) > 0 {
+		if m.combatPotionMode {
+			if len(m.run.Player.Potions) > 0 {
+				m.combatPotionIndex = wrapIndex(m.combatPotionIndex+1, len(m.run.Player.Potions))
+				m.syncCombatTarget()
+			}
+		} else if len(m.combat.Hand) > 0 {
 			m.index = wrapIndex(m.index+1, len(m.combat.Hand))
 			m.syncCombatTarget()
 		}
@@ -597,36 +744,81 @@ func (m model) updateCombat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cycleCombatTarget(-1)
 	case key.Matches(msg, m.keys.Right):
 		m.cycleCombatTarget(1)
+	case msg.String() == "[":
+		if m.combatTopPage > 0 {
+			m.combatTopPage--
+		}
+	case msg.String() == "]":
+		m.combatTopPage++
+	case msg.String() >= "1" && msg.String() <= "6":
+		m.combatPane = int(msg.String()[0] - '1')
+		m.combatTopPage = 0
+	case msg.String() == ",":
+		m.combatLogPage++
+	case msg.String() == ".":
+		if m.combatLogPage > 0 {
+			m.combatLogPage--
+		}
 	case key.Matches(msg, m.keys.Cycle):
 		m.combatPane = (m.combatPane + 1) % engine.CombatInspectPaneCount
+		m.combatTopPage = 0
 	case key.Matches(msg, m.keys.Potion):
-		if len(m.run.Player.Potions) > 0 {
-			potionID := m.run.Player.Potions[0]
-			if err := engine.UsePotionWithTarget(m.lib, m.run.Player, m.combat, potionID, m.combatTarget); err == nil {
-				m.run.Player.Potions = m.run.Player.Potions[1:]
-				changed = true
-			}
+		if len(m.run.Player.Potions) == 0 {
+			m.message = "No potion is available right now."
+			return m, clearMessage()
 		}
+		m.combatPotionMode = !m.combatPotionMode
+		m.combatPotionIndex = min(m.combatPotionIndex, len(m.run.Player.Potions)-1)
+		m.syncCombatTarget()
 	case key.Matches(msg, m.keys.EndTurn):
+		if blocked, cmd := m.blockRapidAction("Action blocked: slow down a little before ending the turn."); blocked {
+			return m, cmd
+		}
 		engine.EndPlayerTurn(m.lib, m.run.Player, m.combat)
 		if !m.combat.Won && !m.combat.Lost {
 			engine.StartPlayerTurn(m.lib, m.run.Player, m.combat)
 			m.syncCombatTarget()
 		}
+		m.markActionDispatched()
 		changed = true
 	case key.Matches(msg, m.keys.Select):
-		if len(m.combat.Hand) > 0 {
+		if blocked, cmd := m.blockRapidAction("Action blocked: slow down a little before playing another card."); blocked {
+			return m, cmd
+		}
+		if m.combatPotionMode {
+			if len(m.run.Player.Potions) == 0 {
+				m.message = "No potion is available right now."
+				return m, clearMessage()
+			}
+			potionIndex := min(m.combatPotionIndex, len(m.run.Player.Potions)-1)
+			potionID := m.run.Player.Potions[potionIndex]
+			if err := engine.UsePotionWithTarget(m.lib, m.run.Player, m.combat, potionID, m.combatTarget); err != nil {
+				m.message = err.Error()
+				return m, clearMessage()
+			}
+			m.run.Player.Potions = append(m.run.Player.Potions[:potionIndex], m.run.Player.Potions[potionIndex+1:]...)
+			if len(m.run.Player.Potions) == 0 {
+				m.combatPotionMode = false
+				m.combatPotionIndex = 0
+			} else {
+				m.combatPotionIndex = min(m.combatPotionIndex, len(m.run.Player.Potions)-1)
+			}
+			m.syncCombatTarget()
+			m.markActionDispatched()
+			changed = true
+		} else if len(m.combat.Hand) > 0 {
 			if err := engine.PlayCardWithTarget(m.lib, m.run.Player, m.combat, m.index, m.combatTarget); err != nil {
 				m.message = err.Error()
 				return m, clearMessage()
 			}
 			if len(m.combat.Hand) > 0 {
 				m.index = min(m.index, len(m.combat.Hand)-1)
-				m.syncCombatTarget()
 			} else {
 				m.index = 0
-				m.combatTarget = engine.CombatTarget{}
+				m.combatPotionMode = len(m.run.Player.Potions) > 0
 			}
+			m.syncCombatTarget()
+			m.markActionDispatched()
 			changed = true
 		}
 	}
@@ -646,10 +838,33 @@ func (m model) updateCombat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		changed = true
 	}
 	if changed {
+		m.combatLogPage = 0
 		if err := m.saveCheckpoint(); err != nil {
 			m.err = err
 			return m, nil
 		}
+	}
+	return m, nil
+}
+
+func (m model) updatePotionReplace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	optionCount := len(m.run.Player.Potions) + 1
+	switch {
+	case key.Matches(msg, m.keys.Up):
+		m.index = wrapIndex(m.index-1, optionCount)
+	case key.Matches(msg, m.keys.Down):
+		m.index = wrapIndex(m.index+1, optionCount)
+	case key.Matches(msg, m.keys.Back):
+		m.index = len(m.run.Player.Potions)
+		fallthrough
+	case key.Matches(msg, m.keys.Select):
+		if m.index < len(m.run.Player.Potions) {
+			if err := engine.ReplacePotion(&m.run.Player, m.index, m.pendingPotionID); err != nil {
+				m.err = err
+				return m, nil
+			}
+		}
+		return m.finishPendingPotionFlow()
 	}
 	return m, nil
 }
@@ -665,6 +880,7 @@ func (m model) updateReward(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.index = wrapIndex(m.index+1, len(m.reward.CardChoices))
 		}
 	case key.Matches(msg, m.keys.Skip):
+		before := m.run.Player
 		if m.reward.EquipmentID != "" {
 			return m.startEquipmentFlow("reward", "", "")
 		}
@@ -672,8 +888,12 @@ func (m model) updateReward(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.err = err
 			return m, nil
 		}
+		if m.startPendingPotionFlow(m.reward.PotionID, before, true, screenMap) {
+			return m, nil
+		}
 		return m.afterNodeAdvance()
 	case key.Matches(msg, m.keys.Select):
+		before := m.run.Player
 		choice := ""
 		if len(m.reward.CardChoices) > 0 {
 			choice = m.reward.CardChoices[m.index].ID
@@ -683,6 +903,9 @@ func (m model) updateReward(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if err := engine.ApplyCombatResultDecision(m.lib, m.run, m.currentNode, m.combat, choice, false); err != nil {
 			m.err = err
+			return m, nil
+		}
+		if m.startPendingPotionFlow(m.reward.PotionID, before, true, screenMap) {
 			return m, nil
 		}
 		return m.afterNodeAdvance()
@@ -702,8 +925,12 @@ func (m model) updateEquip(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		take := m.index == 0
 		switch m.equipFrom {
 		case "reward":
+			before := m.run.Player
 			if err := engine.ApplyCombatResultDecision(m.lib, m.run, m.currentNode, m.combat, m.rewardCard, take); err != nil {
 				m.err = err
+				return m, nil
+			}
+			if m.startPendingPotionFlow(m.reward.PotionID, before, true, screenMap) {
 				return m, nil
 			}
 			return m.afterNodeAdvance()
@@ -721,12 +948,23 @@ func (m model) updateEquip(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "event":
+			choice := choiceByID(m.eventState.Event.Choices, m.eventChoice)
+			if plan, err := engine.EventChoiceDeckActionPlan(m.lib, m.run, choice, take); err != nil {
+				m.err = err
+				return m, nil
+			} else if plan != nil {
+				return m.startDeckActionPlan(*plan)
+			}
+			before := m.run.Player
 			if err := engine.ResolveEventDecision(m.lib, m.run, m.eventState, m.eventChoice, take); err != nil {
 				m.err = err
 				return m, nil
 			}
 			if err := engine.AdvanceNonCombatNode(m.run, m.currentNode); err != nil {
 				m.err = err
+				return m, nil
+			}
+			if m.startPendingPotionFlow(engine.EventChoicePotionID(choice), before, true, screenMap) {
 				return m, nil
 			}
 			return m.afterNodeAdvance()
@@ -742,9 +980,17 @@ func (m model) updateEvent(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Down):
 		m.index = wrapIndex(m.index+1, len(m.eventState.Event.Choices))
 	case key.Matches(msg, m.keys.Select):
+		before := m.run.Player
 		choice := m.eventState.Event.Choices[m.index]
 		if engine.EventChoiceEquipmentID(choice) != "" {
 			return m.startEquipmentFlow("event", choice.ID, "")
+		}
+		if plan, err := engine.EventChoiceDeckActionPlan(m.lib, m.run, choice, true); err != nil {
+			m.err = err
+			return m, nil
+		} else if plan != nil {
+			m.eventChoice = choice.ID
+			return m.startDeckActionPlan(*plan)
 		}
 		if err := engine.ResolveEventDecision(m.lib, m.run, m.eventState, choice.ID, true); err != nil {
 			m.err = err
@@ -752,6 +998,9 @@ func (m model) updateEvent(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if err := engine.AdvanceNonCombatNode(m.run, m.currentNode); err != nil {
 			m.err = err
+			return m, nil
+		}
+		if m.startPendingPotionFlow(engine.EventChoicePotionID(choice), before, true, screenMap) {
 			return m, nil
 		}
 		return m.afterNodeAdvance()
@@ -787,9 +1036,24 @@ func (m model) updateShop(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m.startDeckActionFlow("shop_remove", offer.Price)
 		}
+		if offer.Kind == "service" {
+			plan, err := engine.ShopOfferDeckActionPlan(m.lib, m.run, m.shopState, offer.ID)
+			if err != nil {
+				m.message = err.Error()
+				return m, clearMessage()
+			}
+			if plan != nil {
+				m.shopOfferID = offer.ID
+				return m.startDeckActionPlan(*plan)
+			}
+		}
+		before := m.run.Player
 		if err := engine.ApplyShopPurchase(m.lib, m.run, m.shopState, offer.ID); err != nil {
 			m.message = err.Error()
 			return m, clearMessage()
+		}
+		if offer.Kind == "potion" && m.startPendingPotionFlow(offer.ItemID, before, false, screenShop) {
+			return m, nil
 		}
 		if len(m.shopState.Offers) == 0 {
 			m.index = 0
@@ -860,7 +1124,7 @@ func (m model) updateDeckAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, nil
 			}
-			m.restLog = []string{"强化了卡牌 " + name}
+			m.restLog = []string{"Upgraded card: " + name}
 			if err := engine.AdvanceNonCombatNode(m.run, m.currentNode); err != nil {
 				m.err = err
 				return m, nil
@@ -879,6 +1143,34 @@ func (m model) updateDeckAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, nil
+		case "shop_augment_card":
+			if err := engine.ApplyShopServiceWithDeckChoice(m.lib, m.run, m.shopState, m.shopOfferID, deckIndex); err != nil {
+				m.message = err.Error()
+				return m, clearMessage()
+			}
+			m.screen = screenShop
+			m.index = 0
+			m.clearDeckActionState()
+			if err := m.saveCheckpoint(); err != nil {
+				m.err = err
+				return m, nil
+			}
+			return m, nil
+		case "event_augment_card":
+			before := m.run.Player
+			if err := engine.ResolveEventDecisionWithDeckChoice(m.lib, m.run, m.eventState, m.eventChoice, m.deckActionTakeEquip, deckIndex); err != nil {
+				m.err = err
+				return m, nil
+			}
+			if err := engine.AdvanceNonCombatNode(m.run, m.currentNode); err != nil {
+				m.err = err
+				return m, nil
+			}
+			m.clearDeckActionState()
+			if m.startPendingPotionFlow(engine.EventChoicePotionID(choiceByID(m.eventState.Event.Choices, m.eventChoice)), before, true, screenMap) {
+				return m, nil
+			}
+			return m.afterNodeAdvance()
 		}
 	}
 	return m, nil
@@ -926,29 +1218,35 @@ func (m model) startEquipmentFlow(source, rewardCard, shopOfferID string) (tea.M
 }
 
 func (m model) startDeckActionFlow(mode string, price int) (tea.Model, tea.Cmd) {
-	var (
-		title    string
-		subtitle string
-		indexes  []int
-	)
+	plan := engine.DeckActionPlan{Mode: mode, Price: price}
 	switch mode {
 	case "rest_upgrade":
-		title = "选择要强化的卡牌"
-		subtitle = "篝火锻造将应用该牌的升级数值"
-		indexes = engine.UpgradableCardIndexes(m.lib, m.run.Player.Deck)
+		plan.Title = "Choose a card to upgrade"
+		plan.Subtitle = "The campfire upgrade applies that card's upgrade values."
+		plan.Indexes = engine.UpgradableCardIndexes(m.lib, m.run.Player.Deck)
 	case "shop_remove":
-		title = "选择要移除的卡牌"
-		subtitle = fmt.Sprintf("本次服务价格 %d 金币", price)
-		indexes = make([]int, len(m.run.Player.Deck))
+		plan.Title = "Choose a card to remove"
+		plan.Subtitle = fmt.Sprintf("Service price: %d gold", price)
+		plan.Indexes = make([]int, len(m.run.Player.Deck))
 		for i := range m.run.Player.Deck {
-			indexes[i] = i
+			plan.Indexes[i] = i
 		}
 	}
-	m.deckActionMode = mode
-	m.deckActionTitle = title
-	m.deckActionSubtitle = subtitle
-	m.deckActionIndexes = indexes
-	m.deckActionPrice = price
+	return m.startDeckActionPlan(plan)
+}
+
+func (m model) startDeckActionPlan(plan engine.DeckActionPlan) (tea.Model, tea.Cmd) {
+	m.deckActionMode = plan.Mode
+	m.deckActionTitle = plan.Title
+	m.deckActionSubtitle = plan.Subtitle
+	m.deckActionIndexes = append([]int{}, plan.Indexes...)
+	m.deckActionPrice = plan.Price
+	m.deckActionTakeEquip = plan.TakeEquipment
+	m.deckActionEffect = nil
+	if plan.Effect != nil {
+		effect := *plan.Effect
+		m.deckActionEffect = &effect
+	}
 	m.screen = screenDeckAct
 	m.index = 0
 	if err := m.saveCheckpoint(); err != nil {
@@ -982,6 +1280,10 @@ func (m model) cancelDeckActionFlow() (tea.Model, tea.Cmd) {
 		m.screen = screenRest
 	case "shop_remove":
 		m.screen = screenShop
+	case "shop_augment_card":
+		m.screen = screenShop
+	case "event_augment_card":
+		m.screen = screenEvent
 	default:
 		m.screen = screenMap
 	}
@@ -1019,6 +1321,52 @@ func (m model) afterNodeAdvance() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *model) startPendingPotionFlow(potionID string, before engine.PlayerState, advance bool, resume screen) bool {
+	if potionID == "" || m.run == nil {
+		return false
+	}
+	if len(before.Potions) < engine.EffectivePotionCapacity(m.lib, before) {
+		return false
+	}
+	if len(m.run.Player.Potions) > len(before.Potions) {
+		return false
+	}
+	m.pendingPotionID = potionID
+	m.pendingPotionAdvance = advance
+	m.pendingPotionResume = resume
+	m.screen = screenPotionReplace
+	m.index = 0
+	if err := m.saveCheckpoint(); err != nil {
+		m.err = err
+	}
+	return true
+}
+
+func (m model) finishPendingPotionFlow() (tea.Model, tea.Cmd) {
+	advance := m.pendingPotionAdvance
+	resume := m.pendingPotionResume
+	m.clearPendingPotionState()
+	m.index = 0
+	if advance {
+		return m.afterNodeAdvance()
+	}
+	m.screen = resume
+	if err := m.saveCheckpoint(); err != nil {
+		m.err = err
+		return m, nil
+	}
+	return m, nil
+}
+
+func choiceByID(choices []content.EventChoiceDef, choiceID string) content.EventChoiceDef {
+	for _, choice := range choices {
+		if choice.ID == choiceID {
+			return choice
+		}
+	}
+	return content.EventChoiceDef{}
+}
+
 func (m model) View() string {
 	if m.err != nil {
 		return m.theme.Panel.Render("错误: " + m.err.Error())
@@ -1035,17 +1383,19 @@ func (m model) View() string {
 
 	switch m.screen {
 	case screenMenu:
-		body = ui.RenderChoiceScreen(m.theme, "RuneShell", "符令迷城 - 终端卡牌肉鸽", m.menuItems, m.index, "方向键选择，回车确认，q 退出", width)
+		body = ui.RenderChoiceScreen(m.theme, "RuneShell", "Terminal deckbuilder", m.menuItems, m.index, "Use arrows to choose, Enter to confirm, q to quit", width)
 	case screenClass:
 		items := make([]string, 0, len(m.classes))
 		for _, class := range m.classes {
 			items = append(items, fmt.Sprintf("%s - %s", class.Name, class.Description))
 		}
-		body = ui.RenderChoiceScreen(m.theme, "选择职业", string(m.mode), items, m.index, "回车开始新局，esc 返回", width)
+		body = ui.RenderChoiceScreen(m.theme, "Choose Class", string(m.mode), items, m.index, "Enter to start, Esc to go back", width)
 	case screenMap:
 		body = ui.RenderMap(m.theme, m.run, engine.ReachableNodes(m.run), m.index, width)
 	case screenCombat:
-		body = ui.RenderCombat(m.theme, m.lib, m.run, m.combat, m.index, m.combatPane, m.combatTarget, width, height)
+		body = ui.RenderCombat(m.theme, m.lib, m.run, m.combat, m.index, m.combatPotionIndex, m.combatPotionMode, m.combatPane, m.combatTopPage, m.combatLogPage, m.combatTarget, width, height)
+	case screenPotionReplace:
+		body = ui.RenderPotionReplace(m.theme, m.lib, m.run.Player, m.pendingPotionID, m.index, width)
 	case screenReward:
 		body = ui.RenderReward(m.theme, m.lib, *m.reward, m.index, width)
 	case screenEquip:
@@ -1063,11 +1413,11 @@ func (m model) View() string {
 	case screenProfile:
 		body = ui.RenderProgression(m.theme, m.lib, m.profile, m.profileTab, m.index, width)
 	case screenMultiplayerMenu:
-		body = ui.RenderChoiceScreen(m.theme, "多人模式", "把局域网联机入口放进菜单里。先选创建房间或加入房间，进入后按页面提示填写即可。", m.multiplayerMenuItems, m.index, "回车确认，esc 返回主菜单", width)
+		body = ui.RenderChoiceScreen(m.theme, "Multiplayer", "Create or join a LAN room.", m.multiplayerMenuItems, m.index, "Enter to confirm, Esc to go back", width)
 	case screenMultiplayerCreate:
-		body = ui.RenderMultiplayerSetup(m.theme, "创建多人房间", "先确认你的名字、职业和端口。创建成功后，页面会切到联机会话，其他玩家按同一地址加入即可。", multiplayerCreateLines(m), m.index, multiplayerCreateHelp(m), width)
+		body = ui.RenderMultiplayerSetup(m.theme, "Create Multiplayer Room", "Confirm your name, class, and port before hosting.", multiplayerCreateLines(m), m.index, multiplayerCreateHelp(m), width)
 	case screenMultiplayerJoin:
-		body = ui.RenderMultiplayerSetup(m.theme, "加入多人房间", "输入房主给你的地址，确认名字和职业后直接加入。第一次联机也只需要填这三项。", multiplayerJoinLines(m), m.index, multiplayerJoinHelp(), width)
+		body = ui.RenderMultiplayerSetup(m.theme, "Join Multiplayer Room", "Enter the host address, then confirm your name and class.", multiplayerJoinLines(m), m.index, multiplayerJoinHelp(), width)
 	case screenMultiplayerRoom:
 		actions := multiplayerQuickActions(m.multiplayerSnapshot)
 		actionLabels := multiplayerQuickActionLabels(actions)
@@ -1083,16 +1433,26 @@ func (m model) View() string {
 	if m.message != "" {
 		footer = m.theme.Bad.Render(m.message) + "\n" + footer
 	}
+	if m.showMapOverlay {
+		if m.screen == screenMultiplayerRoom {
+			body = ui.RenderMultiplayerMapTreeOverlay(m.theme, m.multiplayerSnapshot, width, height)
+		} else {
+			body = ui.RenderMapTreeOverlay(m.theme, m.run, m.currentNode, width, height)
+		}
+	}
+	if m.showStatsOverlay {
+		title, combatLines, runLines := m.statsOverlayLines()
+		body = ui.RenderStatsOverlay(m.theme, title, combatLines, runLines, width, height)
+	}
 	return body + "\n\n" + footer
 }
 
 func (m *model) syncCombatTarget() {
-	if m.combat == nil || len(m.combat.Hand) == 0 || m.index < 0 || m.index >= len(m.combat.Hand) {
+	if m.combat == nil {
 		m.combatTarget = engine.CombatTarget{}
 		return
 	}
-	card := m.combat.Hand[m.index]
-	kind := engine.CardTargetKindForCard(m.lib, card)
+	kind := m.currentCombatTargetKind()
 	if kind == engine.CombatTargetNone {
 		m.combatTarget = engine.CombatTarget{}
 		return
@@ -1111,20 +1471,53 @@ func (m *model) syncCombatTarget() {
 			return
 		}
 	}
-	m.combatTarget = engine.DefaultTargetForCard(m.lib, m.combat, card)
+	m.combatTarget = m.defaultCombatTarget()
 }
 
 func (m *model) cycleCombatTarget(delta int) {
-	if m.combat == nil || len(m.combat.Hand) == 0 || m.index < 0 || m.index >= len(m.combat.Hand) {
+	if m.combat == nil {
 		return
 	}
-	card := m.combat.Hand[m.index]
-	kind := engine.CardTargetKindForCard(m.lib, card)
+	kind := m.currentCombatTargetKind()
 	if kind == engine.CombatTargetNone {
 		return
 	}
 	m.syncCombatTarget()
 	m.combatTarget = engine.CycleCombatTarget(m.combat, m.combatTarget, kind, delta)
+}
+
+func (m *model) currentCombatTargetKind() engine.CombatTargetKind {
+	if m.combat == nil {
+		return engine.CombatTargetNone
+	}
+	if m.combatPotionMode {
+		if len(m.run.Player.Potions) == 0 {
+			return engine.CombatTargetNone
+		}
+		potionIndex := min(m.combatPotionIndex, len(m.run.Player.Potions)-1)
+		return engine.PotionTargetKind(m.lib, m.run.Player.Potions[potionIndex])
+	}
+	if len(m.combat.Hand) == 0 || m.index < 0 || m.index >= len(m.combat.Hand) {
+		return engine.CombatTargetNone
+	}
+	return engine.CardTargetKindForCard(m.lib, m.combat.Hand[m.index])
+}
+
+func (m *model) defaultCombatTarget() engine.CombatTarget {
+	if m.combat == nil {
+		return engine.CombatTarget{}
+	}
+	if m.combatPotionMode {
+		if len(m.run.Player.Potions) == 0 {
+			return engine.CombatTarget{}
+		}
+		potionIndex := min(m.combatPotionIndex, len(m.run.Player.Potions)-1)
+		return engine.DefaultTargetForPotion(m.lib, m.combat, 0, m.run.Player.Potions[potionIndex])
+	}
+	if len(m.combat.Hand) == 0 || m.index < 0 || m.index >= len(m.combat.Hand) {
+		return engine.CombatTarget{}
+	}
+	return engine.DefaultTargetForCard(m.lib, m.combat, m.combat.Hand[m.index])
 }
 
 func containsTarget(list []engine.CombatTarget, target engine.CombatTarget) bool {
@@ -1142,6 +1535,34 @@ func clearMessage() tea.Cmd {
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
 		return tickMsg{}
 	})
+}
+
+const actionDispatchCooldown = 180 * time.Millisecond
+
+func (m model) nowTime() time.Time {
+	if m.now != nil {
+		return m.now()
+	}
+	return time.Now()
+}
+
+func (m *model) markActionDispatched() {
+	m.lastActionAt = m.nowTime()
+}
+
+func (m model) actionDispatchBlocked() bool {
+	if m.lastActionAt.IsZero() {
+		return false
+	}
+	return m.nowTime().Sub(m.lastActionAt) < actionDispatchCooldown
+}
+
+func (m *model) blockRapidAction(message string) (bool, tea.Cmd) {
+	if !m.actionDispatchBlocked() {
+		return false, nil
+	}
+	m.message = message
+	return true, clearMessage()
 }
 
 const pagedListSize = 10

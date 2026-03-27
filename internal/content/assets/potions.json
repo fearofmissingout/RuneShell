@@ -1,5 +1,10 @@
 [
   {"id":"tonic_minor","name":"小型回复剂","description":"恢复 16 生命。","rarity":"common","effects":[{"op":"heal","value":16}]},
   {"id":"potion_focus","name":"聚能药剂","description":"获得 2 能量并抽 1 张牌。","rarity":"common","effects":[{"op":"gain_energy","value":2},{"op":"draw","value":1}]},
-  {"id":"potion_fury","name":"暴怒药剂","description":"本场战斗获得 3 层力量。","rarity":"uncommon","effects":[{"op":"apply_status","target":"self","status":"strength","value":3}]}
+  {"id":"potion_fury","name":"暴怒药剂","description":"本场战斗获得 3 层力量。","rarity":"uncommon","effects":[{"op":"apply_status","target":"self","status":"strength","value":3}]},
+  {"id":"potion_battle_echo","name":"战吼回响剂","description":"下一张攻击牌额外重复 1 次。","rarity":"uncommon","effects":[{"op":"repeat_next_card","value":1,"tag":"attack"}]},
+  {"id":"potion_arcane_echo","name":"奥术回响剂","description":"下一张法术牌额外重复 1 次。","rarity":"uncommon","effects":[{"op":"repeat_next_card","value":1,"tag":"spell"}]},
+  {"id":"potion_echo","name":"回响药剂","description":"下一张牌额外重复 2 次。","rarity":"rare","effects":[{"op":"repeat_next_card","value":2}]},
+  {"id":"potion_cinderstorm","name":"烬雨药剂","description":"对全体敌人施加 3 层燃烧。","rarity":"uncommon","effects":[{"op":"apply_status","target":"all_enemies","status":"burn","value":3,"duration":3}]},
+  {"id":"potion_venom_burst","name":"毒潮药剂","description":"对全体敌人施加 3 层中毒。","rarity":"rare","effects":[{"op":"apply_status","target":"all_enemies","status":"poison","value":3,"duration":3}]}
 ]

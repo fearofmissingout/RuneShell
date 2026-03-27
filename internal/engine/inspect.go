@@ -27,20 +27,61 @@ func CombatInspectPaneName(index int) string {
 }
 
 func CombatInspectLines(lib *content.Library, run *RunState, combat *CombatState, pane int) []string {
+	return CombatInspectLinesForSeat(lib, run, combat, 0, pane)
+}
+
+func CombatInspectLinesForSeat(lib *content.Library, run *RunState, combat *CombatState, seatIndex int, pane int) []string {
+	seat := CombatSeatView(combat, seatIndex)
+	player := run.Player
+	if actor := ActorForSeat(combat, seatIndex); actor != nil {
+		player.Name = actor.Name
+		player.HP = actor.HP
+		player.MaxHP = actor.MaxHP
+		player.MaxEnergy = actor.MaxEnergy
+	}
+	if state := SeatPlayerForInspect(combat, run.Player, seatIndex); state.Name != "" {
+		player = state
+	}
+	if seat != nil {
+		player.Potions = append([]string{}, seat.Potions...)
+	}
 	switch normalizeCombatInspectPane(pane) {
 	case 0:
-		return combatOverviewLines(lib, run, combat)
+		return combatOverviewLines(lib, player, combat, seatIndex)
 	case 1:
-		return runtimeCardLines(lib, combat.DrawPile, "抽牌堆为空")
+		if seat == nil {
+			return []string{"抽牌堆为空"}
+		}
+		return runtimeCardLines(lib, seat.DrawPile, "抽牌堆为空")
 	case 2:
-		return runtimeCardLines(lib, combat.Discard, "弃牌堆为空")
+		if seat == nil {
+			return []string{"弃牌堆为空"}
+		}
+		return runtimeCardLines(lib, seat.Discard, "弃牌堆为空")
 	case 3:
-		return runtimeCardLines(lib, combat.Exhaust, "消耗堆为空")
+		if seat == nil {
+			return []string{"消耗堆为空"}
+		}
+		return runtimeCardLines(lib, seat.Exhaust, "消耗堆为空")
 	case 4:
-		return deckCardLines(lib, run.Player.Deck, "牌组为空")
+		return deckCardLines(lib, player.Deck, "牌组为空")
 	default:
-		return combatEffectLines(lib, run.Player, combat)
+		return combatEffectLines(lib, player, combat, seatIndex)
 	}
+}
+
+func CombatSeatView(combat *CombatState, seatIndex int) *CombatSeatState {
+	if combat == nil || seatIndex < 0 || seatIndex >= len(combat.Seats) {
+		return nil
+	}
+	return &combat.Seats[seatIndex]
+}
+
+func SeatPlayerForInspect(combat *CombatState, fallback PlayerState, seatIndex int) PlayerState {
+	if combat != nil && seatIndex >= 0 && seatIndex < len(combat.SeatPlayers) {
+		return combat.SeatPlayers[seatIndex]
+	}
+	return fallback
 }
 
 func CardStateName(lib *content.Library, cardID string, upgraded bool) string {
@@ -52,12 +93,7 @@ func CardStateName(lib *content.Library, cardID string, upgraded bool) string {
 }
 
 func CardStateSummary(lib *content.Library, cardID string, upgraded bool) string {
-	card := lib.Cards[cardID]
-	effects := card.Effects
-	if upgraded && len(card.UpgradeEffects) > 0 {
-		effects = card.UpgradeEffects
-	}
-	return DescribeEffects(lib, effects)
+	return DescribeEffects(lib, baseCardEffects(lib, cardID, upgraded))
 }
 
 func DescribeEffects(lib *content.Library, effects []content.Effect) string {
@@ -144,8 +180,44 @@ func DescribeEffect(lib *content.Library, effect content.Effect) string {
 		return "获得卡牌"
 	case "upgrade_card":
 		return "强化一张可升级卡牌"
+	case "augment_card":
+		effectName := DescribeEffects(lib, effect.Effects)
+		scope := "本局"
+		switch effect.Scope {
+		case "combat":
+			scope = "下场战斗"
+		case "turn":
+			scope = "下场战斗的本回合"
+		}
+		selector := "选择一张卡牌"
+		switch effect.Selector {
+		case "all":
+			selector = "所有卡牌"
+		case "choose_upgradable":
+			selector = "选择一张可升级卡牌"
+		case "all_upgradable":
+			selector = "所有可升级卡牌"
+		}
+		if effect.Tag != "" {
+			selector += "（" + effect.Tag + "）"
+		}
+		return selector + "附加效果: " + effectName + "（" + scope + "）"
 	case "gain_energy":
 		return fmt.Sprintf("获得 %d 能量", effect.Value)
+	case "potion_capacity":
+		return fmt.Sprintf("药水栏位 +%d", effect.Value)
+	case "repeat_next_card":
+		count := effect.Value
+		if count <= 0 {
+			count = 1
+		}
+		return pendingRepeatDescription(count, effect.Tag)
+	case "reply":
+		count := effect.Value
+		if count <= 0 {
+			count = 1
+		}
+		return fmt.Sprintf("本牌额外重复 %d 次", count)
 	default:
 		return effect.Op
 	}
@@ -192,7 +264,7 @@ func runtimeCardLines(lib *content.Library, pile []RuntimeCard, empty string) []
 	}
 	lines := make([]string, 0, len(pile))
 	for i, card := range pile {
-		lines = append(lines, fmt.Sprintf("%d. %s | %s", i+1, CardStateName(lib, card.ID, card.Upgraded), CardStateSummary(lib, card.ID, card.Upgraded)))
+		lines = append(lines, fmt.Sprintf("%d. %s | %s", i+1, CardStateName(lib, card.ID, card.Upgraded), RuntimeCardStateSummary(lib, card)))
 	}
 	return lines
 }
@@ -203,15 +275,23 @@ func deckCardLines(lib *content.Library, deck []DeckCard, empty string) []string
 	}
 	lines := make([]string, 0, len(deck))
 	for i, card := range deck {
-		lines = append(lines, fmt.Sprintf("%d. %s | %s", i+1, CardStateName(lib, card.CardID, card.Upgraded), CardStateSummary(lib, card.CardID, card.Upgraded)))
+		lines = append(lines, fmt.Sprintf("%d. %s | %s", i+1, CardStateName(lib, card.CardID, card.Upgraded), DeckCardStateSummary(lib, card)))
 	}
 	return lines
 }
 
-func combatOverviewLines(lib *content.Library, run *RunState, combat *CombatState) []string {
+func combatOverviewLines(lib *content.Library, player PlayerState, combat *CombatState, seatIndex int) []string {
+	seat := CombatSeatView(combat, seatIndex)
+	handSize, drawSize, discardSize, exhaustSize := len(combat.Hand), len(combat.DrawPile), len(combat.Discard), len(combat.Exhaust)
+	if seat != nil {
+		handSize = len(seat.Hand)
+		drawSize = len(seat.DrawPile)
+		discardSize = len(seat.Discard)
+		exhaustSize = len(seat.Exhaust)
+	}
 	lines := []string{
-		fmt.Sprintf("手牌 %d | 抽牌堆 %d | 弃牌堆 %d | 消耗堆 %d", len(combat.Hand), len(combat.DrawPile), len(combat.Discard), len(combat.Exhaust)),
-		fmt.Sprintf("药水 %d/%d | 金币 %d | 牌组 %d", len(run.Player.Potions), run.Player.PotionCapacity, run.Player.Gold, len(run.Player.Deck)),
+		fmt.Sprintf("手牌 %d | 抽牌堆 %d | 弃牌堆 %d | 消耗堆 %d", handSize, drawSize, discardSize, exhaustSize),
+		fmt.Sprintf("药水 %d/%d | 金币 %d | 牌组 %d", len(player.Potions), EffectivePotionCapacity(lib, player), player.Gold, len(player.Deck)),
 		"友方：",
 	}
 	lines = append(lines, DescribeParty(combat)...)
@@ -223,9 +303,9 @@ func combatOverviewLines(lib *content.Library, run *RunState, combat *CombatStat
 		}
 		lines = append(lines, line)
 	}
-	if len(run.Player.Potions) > 0 {
+	if len(player.Potions) > 0 {
 		lines = append(lines, "药水：")
-		for i, potionID := range run.Player.Potions {
+		for i, potionID := range player.Potions {
 			potion := lib.Potions[potionID]
 			lines = append(lines, fmt.Sprintf("%d. %s | %s", i+1, potion.Name, potion.Description))
 		}
@@ -233,8 +313,17 @@ func combatOverviewLines(lib *content.Library, run *RunState, combat *CombatStat
 	return lines
 }
 
-func combatEffectLines(lib *content.Library, player PlayerState, combat *CombatState) []string {
+func combatEffectLines(lib *content.Library, player PlayerState, combat *CombatState, seatIndex int) []string {
 	lines := []string{}
+	if actor := ActorForSeat(combat, seatIndex); actor != nil {
+		status := DescribeStatuses(actor.Statuses)
+		if status != "" {
+			lines = append(lines, "自身状态 | "+status)
+		}
+	}
+	for _, pending := range PendingNextCardRepeatDescriptions(combat, seatIndex) {
+		lines = append(lines, "待触发 | "+pending)
+	}
 	lines = append(lines, passiveSourceLines(lib, player)...)
 	lines = append(lines, encounterPassiveLines(lib, combat)...)
 	if len(lines) == 0 {
@@ -297,4 +386,16 @@ func durationSuffix(duration int) string {
 		return ""
 	}
 	return fmt.Sprintf("(%d 回合)", duration)
+}
+
+func pendingRepeatDescription(count int, tag string) string {
+	count = max(1, count)
+	switch tag {
+	case "attack":
+		return fmt.Sprintf("下一张攻击牌额外重复 %d 次", count)
+	case "spell":
+		return fmt.Sprintf("下一张法术牌额外重复 %d 次", count)
+	default:
+		return fmt.Sprintf("下一张牌额外重复 %d 次", count)
+	}
 }

@@ -101,6 +101,10 @@ func EquipmentPowerScore(lib *content.Library, player PlayerState, equipmentID s
 			score += effect.Value * weight
 		case "gain_energy":
 			score += effect.Value * 9
+		case "potion_capacity":
+			score += effect.Value * 7
+		case "repeat_next_card":
+			score += max(1, effect.Value) * 8
 		}
 	}
 
@@ -167,6 +171,8 @@ func equipmentStatusScore(effect content.Effect) int {
 	case "frail":
 		base = 5
 	case "burn":
+		base = 6
+	case "poison":
 		base = 6
 	}
 	if effect.Trigger == "combat_start" {

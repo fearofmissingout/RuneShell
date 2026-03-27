@@ -12,7 +12,7 @@ import (
 
 func RenderCodex(theme Theme, lib *content.Library, tab, selected, width int) string {
 	totalWidth := max(30, viewportWidth(width, 100)-2)
-	leftWidth, rightWidth, stacked := splitAdaptiveColumns(totalWidth, totalWidth/3, 24, 24, 1)
+	leftWidth, rightWidth, stacked := splitFramedAdaptiveColumns(totalWidth, totalWidth/3, 24, 24, 1, 4)
 	listWidth := panelContentWidth(leftWidth)
 	detailWidth := panelContentWidth(rightWidth)
 

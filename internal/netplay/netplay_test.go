@@ -3,6 +3,7 @@ package netplay
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -19,6 +20,19 @@ type testClient struct {
 	conn net.Conn
 	enc  *json.Encoder
 	dec  *json.Decoder
+}
+
+func ensureSeatState(srv *server, playerID string, run *engine.RunState) *seatRunState {
+	if srv.seatStates == nil {
+		srv.seatStates = map[string]*seatRunState{}
+	}
+	state := srv.seatStates[playerID]
+	if state == nil {
+		state = &seatRunState{}
+		srv.seatStates[playerID] = state
+	}
+	state.Run = run
+	return state
 }
 
 func TestDialTCPWithRetryHandlesDelayedListener(t *testing.T) {
@@ -107,6 +121,7 @@ func TestServerLobbyMapCombatAndSharedEndTurn(t *testing.T) {
 	}
 
 	host.sendCommand(t, commandPayload{Action: "node", ItemIndex: 1})
+	guest.sendCommand(t, commandPayload{Action: "node", ItemIndex: 1})
 	hostCombat := host.waitForSnapshot(t, func(s *roomSnapshot) bool {
 		return s.Phase == phaseCombat && s.Combat != nil && len(s.Combat.Party) == 2 && len(s.Combat.Enemies) >= 1
 	})
@@ -191,8 +206,8 @@ func TestServerNonCombatPhaseHandlers(t *testing.T) {
 		},
 	}
 	srv.phase = phaseReward
-	srv.reward = &srv.combat.Reward
-	if err := srv.applyRewardLocked("slash", false); err != nil {
+	ensureSeatState(srv, "p0", srv.run).Reward = &srv.combat.Reward
+	if err := srv.applyRewardLocked("p0", "slash", false); err != nil {
 		t.Fatalf("applyRewardLocked() error = %v", err)
 	}
 	if srv.phase != phaseMap {
@@ -202,7 +217,7 @@ func TestServerNonCombatPhaseHandlers(t *testing.T) {
 	shopNode := engine.Node{ID: "shop1", Act: 1, Floor: 2, Kind: engine.NodeShop, Edges: []string{"n3"}}
 	shop := engine.StartShop(lib, srv.run)
 	srv.currentNode = shopNode
-	srv.shopState = &shop
+	ensureSeatState(srv, "p0", srv.run).Shop = &shop
 	srv.phase = phaseShop
 	beforeGold := srv.run.Player.Gold
 	srv.handleShopCommandLocked("p0", commandPayload{Action: "buy", ItemIndex: 1})
@@ -271,6 +286,22 @@ func TestSnapshotIncludesSeatsAndWaitingHints(t *testing.T) {
 	if !strings.Contains(lobbySnap.RoleNote, "control room settings") {
 		t.Fatalf("expected host role note in lobby, got %q", lobbySnap.RoleNote)
 	}
+	presentation := srv.phasePresentationLocked("p0", lobbySnap.WaitingOn)
+	if presentation.PhaseHint != lobbySnap.PhaseHint {
+		t.Fatalf("expected presentation hint to match snapshot, got %q vs %q", presentation.PhaseHint, lobbySnap.PhaseHint)
+	}
+	if presentation.ControlLabel != lobbySnap.ControlLabel {
+		t.Fatalf("expected presentation control label to match snapshot, got %q vs %q", presentation.ControlLabel, lobbySnap.ControlLabel)
+	}
+	if presentation.RoleNote != lobbySnap.RoleNote {
+		t.Fatalf("expected presentation role note to match snapshot, got %q vs %q", presentation.RoleNote, lobbySnap.RoleNote)
+	}
+	if strings.Join(presentation.Commands, "|") != strings.Join(lobbySnap.Commands, "|") {
+		t.Fatalf("expected presentation commands to match snapshot, got %v vs %v", presentation.Commands, lobbySnap.Commands)
+	}
+	if strings.Join(presentation.Examples, "|") != strings.Join(lobbySnap.Examples, "|") {
+		t.Fatalf("expected presentation examples to match snapshot, got %v vs %v", presentation.Examples, lobbySnap.Examples)
+	}
 	if !containsString(lobbySnap.Examples, "class vanguard") || !containsString(lobbySnap.Examples, "ready") {
 		t.Fatalf("expected lobby examples for host, got %v", lobbySnap.Examples)
 	}
@@ -327,10 +358,10 @@ func TestSnapshotIncludesSeatsAndWaitingHints(t *testing.T) {
 	if len(offlineSnap.WaitingOn) != 0 {
 		t.Fatalf("expected offline guest to stop blocking waiting list, got %v", offlineSnap.WaitingOn)
 	}
-	if offlineSnap.ControlLabel != "Shared combat control" {
+	if offlineSnap.ControlLabel != "Personal combat loadout" {
 		t.Fatalf("expected combat control label, got %q", offlineSnap.ControlLabel)
 	}
-	if !strings.Contains(offlineSnap.RoleNote, "Every connected seat can play cards") {
+	if !strings.Contains(offlineSnap.RoleNote, "seat-specific hands, piles, potions, and energy") {
 		t.Fatalf("expected combat role note, got %q", offlineSnap.RoleNote)
 	}
 	if len(offlineSnap.Examples) == 0 || !containsString(offlineSnap.Examples, "end") {
@@ -341,6 +372,67 @@ func TestSnapshotIncludesSeatsAndWaitingHints(t *testing.T) {
 	}
 	if len(offlineSnap.SeatStatus) != 2 || !strings.Contains(offlineSnap.SeatStatus[1], "offline-auto-ready") {
 		t.Fatalf("expected offline guest seat status, got %v", offlineSnap.SeatStatus)
+	}
+}
+
+func TestMapPhasePresentationTracksSeatVoteState(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0", "p1"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true}
+	srv.players["p1"] = &roomPlayer{ID: "p1", Seat: 2, Name: "Guest", ClassID: "arcanist", Connected: true}
+	srv.phase = phaseMap
+	srv.run = &engine.RunState{
+		Mode:         engine.ModeStory,
+		Seed:         11,
+		Act:          1,
+		CurrentFloor: 0,
+		Reachable:    []string{"A1F1M1"},
+	}
+
+	hostPresentation := srv.phasePresentationLocked("p0", nil)
+	if hostPresentation.ControlLabel != "Shared route vote" {
+		t.Fatalf("expected host route vote label before voting, got %q", hostPresentation.ControlLabel)
+	}
+	if !strings.Contains(hostPresentation.PhaseHint, "Submit your route vote") {
+		t.Fatalf("expected host route vote hint before voting, got %q", hostPresentation.PhaseHint)
+	}
+
+	guestPresentation := srv.phasePresentationLocked("p1", nil)
+	if guestPresentation.ControlLabel != "Shared route vote" {
+		t.Fatalf("expected guest route vote label before voting, got %q", guestPresentation.ControlLabel)
+	}
+	if !strings.Contains(guestPresentation.PhaseHint, "Submit your route vote") {
+		t.Fatalf("expected guest route vote hint before voting, got %q", guestPresentation.PhaseHint)
+	}
+
+	ensureSeatState(srv, "p0", &engine.RunState{}).MapVote = 1
+	hostAfterVote := srv.phasePresentationLocked("p0", nil)
+	if hostAfterVote.ControlLabel != "Route vote submitted" {
+		t.Fatalf("expected host submitted label after voting, got %q", hostAfterVote.ControlLabel)
+	}
+	if !strings.Contains(hostAfterVote.PhaseHint, "Waiting for the remaining connected seats") {
+		t.Fatalf("expected waiting hint after host vote, got %q", hostAfterVote.PhaseHint)
+	}
+
+	guestAfterHostVote := srv.phasePresentationLocked("p1", nil)
+	if guestAfterHostVote.ControlLabel != "Shared route vote" {
+		t.Fatalf("expected guest to remain in voting state, got %q", guestAfterHostVote.ControlLabel)
+	}
+	if !strings.Contains(guestAfterHostVote.PhaseHint, "Submit your route vote") {
+		t.Fatalf("expected guest to still be prompted to vote, got %q", guestAfterHostVote.PhaseHint)
 	}
 }
 
@@ -457,6 +549,11 @@ func TestServerPersistenceRoundTrip(t *testing.T) {
 	engine.StartPlayerTurn(srv.lib, srv.run.Player, srv.combat)
 	srv.phase = phaseCombat
 	srv.chatLog = []string{"12:00 Host: hello team"}
+	srv.flowOwner = "p1"
+	ensureSeatState(srv, "p0", srv.seatRunLocked("p0")).Reward = &engine.RewardState{Gold: 11, CardChoices: []content.CardDef{lib.Cards["slash"]}}
+	ensureSeatState(srv, "p0", srv.seatRunLocked("p0")).RestLog = []string{"Host: healed 8 HP"}
+	ensureSeatState(srv, "p1", srv.seatRunLocked("p1")).Event = &engine.EventState{Event: lib.Events["war_council"]}
+	ensureSeatState(srv, "p1", srv.seatRunLocked("p1")).MapVote = 1
 
 	if err := srv.persistLocked(); err != nil {
 		t.Fatalf("persistLocked() error = %v", err)
@@ -488,13 +585,170 @@ func TestServerPersistenceRoundTrip(t *testing.T) {
 	if len(restored.chatLog) != 1 || !strings.Contains(restored.chatLog[0], "hello team") {
 		t.Fatalf("expected restored chat log, got %v", restored.chatLog)
 	}
-	if len(restored.partyMembers) != 2 {
-		t.Fatalf("expected restored party size 2, got %d", len(restored.partyMembers))
+	if len(restored.seatStates) != 2 {
+		t.Fatalf("expected restored seat state size 2, got %d", len(restored.seatStates))
+	}
+	if restored.flowOwner != "p1" {
+		t.Fatalf("expected restored flow owner p1, got %q", restored.flowOwner)
+	}
+	if state := restored.seatStates["p0"]; state == nil || state.Reward == nil || state.Reward.Gold != 11 {
+		t.Fatalf("expected restored p0 reward state, got %#v", state)
+	}
+	if state := restored.seatStates["p0"]; state == nil || len(state.RestLog) != 1 || !strings.Contains(state.RestLog[0], "healed") {
+		t.Fatalf("expected restored p0 rest log, got %#v", state)
+	}
+	if state := restored.seatStates["p1"]; state == nil || state.Event == nil || state.Event.Event.ID != "war_council" || state.MapVote != 1 {
+		t.Fatalf("expected restored p1 event/map vote state, got %#v", state)
 	}
 	for _, player := range restored.players {
 		if player.Connected {
 			t.Fatalf("expected restored players to be offline until they reconnect")
 		}
+	}
+}
+
+func TestCombatSnapshotUsesSeatSpecificHandAndPotionState(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0", "p1"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true}
+	srv.players["p1"] = &roomPlayer{ID: "p1", Seat: 2, Name: "Guest", ClassID: "arcanist", Connected: true}
+	srv.phase = phaseCombat
+
+	players := []engine.PlayerState{
+		{Name: "Host", ClassID: "vanguard", MaxHP: 80, HP: 80, MaxEnergy: 3, Deck: []engine.DeckCard{{CardID: "slash"}}},
+		{Name: "Guest", ClassID: "arcanist", MaxHP: 70, HP: 70, MaxEnergy: 3, Deck: []engine.DeckCard{{CardID: "guard"}}, Potions: []string{"potion_fury"}},
+	}
+	encounter := content.EncounterDef{
+		ID:          "dummy",
+		Name:        "dummy",
+		Kind:        "monster",
+		Act:         1,
+		HP:          30,
+		GoldReward:  0,
+		CardReward:  0,
+		IntentCycle: []content.EnemyIntentDef{{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}}},
+	}
+	srv.run = &engine.RunState{Player: players[0], Mode: engine.ModeStory}
+	ensureSeatState(srv, "p0", &engine.RunState{Player: players[0]})
+	ensureSeatState(srv, "p1", &engine.RunState{Player: players[1]})
+	srv.combat = engine.NewCombatForParty(lib, players, encounter, 21)
+	srv.combat.Seats[0].Hand = []engine.RuntimeCard{{ID: "slash"}}
+	srv.combat.Seats[1].Hand = []engine.RuntimeCard{{ID: "guard"}}
+	srv.combat.Seats[0].Potions = nil
+	srv.combat.Seats[1].Potions = []string{"potion_fury"}
+
+	hostSnap := srv.buildCombatSnapshotLocked("p0")
+	guestSnap := srv.buildCombatSnapshotLocked("p1")
+	if len(hostSnap.Hand) != 1 || hostSnap.Hand[0].Name != lib.Cards["slash"].Name {
+		t.Fatalf("expected host hand snapshot to show slash, got %#v", hostSnap.Hand)
+	}
+	if len(hostSnap.Potions) != 0 {
+		t.Fatalf("expected host potions snapshot to be empty, got %#v", hostSnap.Potions)
+	}
+	if len(guestSnap.Hand) != 1 || guestSnap.Hand[0].Name != lib.Cards["guard"].Name {
+		t.Fatalf("expected guest hand snapshot to show guard, got %#v", guestSnap.Hand)
+	}
+	if len(guestSnap.Potions) != 1 || !strings.Contains(guestSnap.Potions[0], lib.Potions["potion_fury"].Name) {
+		t.Fatalf("expected guest potions snapshot to show fury potion, got %#v", guestSnap.Potions)
+	}
+	srv.combat.Seats[1].PendingCardRepeats = []engine.PendingCardRepeat{{Count: 1, Tag: "spell"}}
+	guestSnap = srv.buildCombatSnapshotLocked("p1")
+	if len(guestSnap.PendingRepeats) != 1 || !strings.Contains(guestSnap.PendingRepeats[0], "法术牌额外重复 1 次") {
+		t.Fatalf("expected guest snapshot to expose pending spell repeat, got %#v", guestSnap.PendingRepeats)
+	}
+}
+
+func TestPersistRoundTripsDeckActionPromptState(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "room.json")
+	srv, err := newServerWithSavePath(lib, "127.0.0.1:0", savePath)
+	if err != nil {
+		t.Fatalf("newServerWithSavePath() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Name: "Host", ClassID: "vanguard", Ready: true, Connected: true}
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 19)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	srv.run = run
+	state := ensureSeatState(srv, "p0", run)
+	state.Event = &engine.EventState{Event: lib.Events["bulwark_blueprint"]}
+	srv.phase = phaseDeckAction
+	srv.flowOwner = "p0"
+	srv.currentNode = engine.Node{ID: "n-event", Kind: engine.NodeEvent, Act: 1, Floor: 2, Index: 0, Edges: []string{"n-next"}}
+	srv.eventChoice = "opening_spark"
+	srv.deckActionMode = "event_augment_card"
+	srv.deckActionTitle = "选择要附加效果的卡牌"
+	srv.deckActionSubtitle = "壁垒蓝图 -> 额外抽 1（下场战斗的本回合）"
+	srv.deckActionIndexes = []int{0, 1}
+	srv.deckActionEffect = &content.Effect{
+		Op:       "augment_card",
+		Name:     "opening_spark",
+		Scope:    "turn",
+		Selector: "choose_upgradable",
+		Effects: []content.Effect{
+			{Op: "draw", Value: 1},
+		},
+	}
+	srv.deckActionTakeEquip = true
+
+	if err := srv.persistLocked(); err != nil {
+		t.Fatalf("persistLocked() error = %v", err)
+	}
+	_ = srv.listener.Close()
+
+	restored, ok, err := loadServerFromSavePath(lib, "127.0.0.1:0", savePath)
+	if err != nil {
+		t.Fatalf("loadServerFromSavePath() error = %v", err)
+	}
+	defer func() {
+		_ = restored.listener.Close()
+	}()
+	if !ok {
+		t.Fatal("expected saved room to restore")
+	}
+	if restored.phase != phaseDeckAction || restored.flowOwner != "p0" {
+		t.Fatalf("expected restored deck action phase for p0, got phase=%q owner=%q", restored.phase, restored.flowOwner)
+	}
+	if restored.eventChoice != "opening_spark" {
+		t.Fatalf("expected restored event choice opening_spark, got %q", restored.eventChoice)
+	}
+	if restored.deckActionEffect == nil || restored.deckActionEffect.Scope != "turn" {
+		t.Fatalf("expected restored deck action effect, got %#v", restored.deckActionEffect)
+	}
+	if !restored.deckActionTakeEquip {
+		t.Fatalf("expected restored take-equipment flag")
+	}
+	if state := restored.seatStates["p0"]; state == nil || state.Event == nil || state.Event.Event.ID != "bulwark_blueprint" {
+		t.Fatalf("expected restored seat event state, got %#v", state)
+	}
+	snap := restored.buildDeckActionSnapshotLocked("p0")
+	if snap == nil || len(snap.Cards) == 0 {
+		t.Fatalf("expected restored deck action snapshot cards, got %#v", snap)
 	}
 }
 
@@ -593,14 +847,30 @@ func TestServerReconnectIntoSavedRun(t *testing.T) {
 	if !containsString(hostRecovered.Commands, "node <index>") {
 		t.Fatalf("expected shared map quick command for host, got %v", hostRecovered.Commands)
 	}
-	if hostRecovered.ControlLabel != "Host route selection" {
+	if hostRecovered.ControlLabel != "Shared route vote" {
 		t.Fatalf("expected host control label after restore, got %q", hostRecovered.ControlLabel)
 	}
-	if !strings.Contains(hostRecovered.RoleNote, "choose the next shared node") {
+	if !strings.Contains(hostRecovered.RoleNote, "votes on the next node") {
 		t.Fatalf("expected host role note after restore, got %q", hostRecovered.RoleNote)
 	}
 	if !containsString(hostRecovered.Examples, "node 1") {
 		t.Fatalf("expected host example command after restore, got %v", hostRecovered.Examples)
+	}
+	hostPresentation := restored.phasePresentationLocked(restored.hostID, hostRecovered.WaitingOn)
+	if hostPresentation.PhaseHint != hostRecovered.PhaseHint {
+		t.Fatalf("expected restored host hint to match presentation, got %q vs %q", hostPresentation.PhaseHint, hostRecovered.PhaseHint)
+	}
+	if hostPresentation.ControlLabel != hostRecovered.ControlLabel {
+		t.Fatalf("expected restored host control label to match presentation, got %q vs %q", hostPresentation.ControlLabel, hostRecovered.ControlLabel)
+	}
+	if hostPresentation.RoleNote != hostRecovered.RoleNote {
+		t.Fatalf("expected restored host role note to match presentation, got %q vs %q", hostPresentation.RoleNote, hostRecovered.RoleNote)
+	}
+	if strings.Join(hostPresentation.Commands, "|") != strings.Join(hostRecovered.Commands, "|") {
+		t.Fatalf("expected restored host commands to match presentation, got %v vs %v", hostPresentation.Commands, hostRecovered.Commands)
+	}
+	if strings.Join(hostPresentation.Examples, "|") != strings.Join(hostRecovered.Examples, "|") {
+		t.Fatalf("expected restored host examples to match presentation, got %v vs %v", hostPresentation.Examples, hostRecovered.Examples)
 	}
 
 	guest2 := mustConnectClient(t, restored.roomAddr, "Guest", "arcanist")
@@ -620,14 +890,14 @@ func TestServerReconnectIntoSavedRun(t *testing.T) {
 	if len(guestRecovered.Resume) == 0 || !strings.Contains(guestRecovered.Resume[0], "Recovered phase: Shared Map") {
 		t.Fatalf("expected guest resume summary, got %v", guestRecovered.Resume)
 	}
-	if guestRecovered.ControlLabel != "Waiting for host route selection" {
+	if guestRecovered.ControlLabel != "Shared route vote" {
 		t.Fatalf("expected guest control label after restore, got %q", guestRecovered.ControlLabel)
 	}
-	if !strings.Contains(guestRecovered.RoleNote, "host chooses the route") {
+	if !strings.Contains(guestRecovered.RoleNote, "votes on the next node") {
 		t.Fatalf("expected guest role note after restore, got %q", guestRecovered.RoleNote)
 	}
-	if !containsString(guestRecovered.Examples, "chat waiting on route") {
-		t.Fatalf("expected waiting member chat example after restore, got %v", guestRecovered.Examples)
+	if !containsString(guestRecovered.Examples, "node 1") {
+		t.Fatalf("expected route vote example after restore, got %v", guestRecovered.Examples)
 	}
 	if !containsString(guestRecovered.Commands, "quit") {
 		t.Fatalf("expected member quick commands, got %v", guestRecovered.Commands)
@@ -1254,7 +1524,7 @@ func TestRenderRoomHeaderMarksUnreadChatAndYouSeat(t *testing.T) {
 		RoomAddr:         "127.0.0.1:7777",
 		Phase:            phaseCombat,
 		PhaseTitle:       "Shared Combat",
-		ControlLabel:     "Shared combat control",
+		ControlLabel:     "Personal combat loadout",
 		Players:          []roomPlayer{{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true}, {ID: "p1", Seat: 2, Name: "Guest", ClassID: "arcanist", Connected: true}},
 		ChatLog:          []string{"10:00 Host: ready", "10:01 Guest: ok", "10:02 Host: focus left"},
 		ChatUnread:       2,
@@ -1320,25 +1590,33 @@ func TestBuildSnapshotsMarkCoopContent(t *testing.T) {
 			Deck:      []engine.DeckCard{{CardID: "slash"}},
 		},
 	}
+	ensureSeatState(srv, "p0", srv.run)
 
 	shop := engine.StartShop(lib, srv.run)
-	srv.shopState = &shop
-	shopSnap := srv.buildShopSnapshotLocked()
+	ensureSeatState(srv, "p0", srv.run).Shop = &shop
+	shopSnap := srv.buildShopSnapshotLocked("p0")
 	foundService := false
+	foundCoopService := false
 	for _, offer := range shopSnap.Offers {
 		if offer.Kind == "service" {
 			foundService = true
-			if !containsString(offer.Badges, "SERVICE") || !containsString(offer.Badges, "CO-OP") {
-				t.Fatalf("expected coop shop service badges, got %#v", offer.Badges)
+			if !containsString(offer.Badges, "SERVICE") {
+				t.Fatalf("expected service badge, got %#v", offer.Badges)
+			}
+			if containsString(offer.Badges, "CO-OP") {
+				foundCoopService = true
 			}
 		}
 	}
 	if !foundService {
 		t.Fatal("expected at least one coop service offer in multiplayer shop snapshot")
 	}
+	if !foundCoopService {
+		t.Fatal("expected at least one coop-tagged service offer in multiplayer shop snapshot")
+	}
 
-	srv.eventState = &engine.EventState{Event: lib.Events["war_council"]}
-	eventSnap := srv.buildEventSnapshotLocked()
+	ensureSeatState(srv, "p0", srv.run).Event = &engine.EventState{Event: lib.Events["war_council"]}
+	eventSnap := srv.buildEventSnapshotLocked("p0")
 	if !containsString(eventSnap.Badges, "CO-OP") {
 		t.Fatalf("expected coop event badge, got %#v", eventSnap.Badges)
 	}
@@ -1346,12 +1624,12 @@ func TestBuildSnapshotsMarkCoopContent(t *testing.T) {
 		t.Fatalf("expected coop event choice badge, got %#v", eventSnap.Choices)
 	}
 
-	srv.reward = &engine.RewardState{
+	ensureSeatState(srv, "p0", srv.run).Reward = &engine.RewardState{
 		Gold:        20,
 		CardChoices: []content.CardDef{lib.Cards["pack_tactics"]},
 		RelicID:     "linked_bracers",
 	}
-	rewardSnap := srv.buildRewardSnapshotLocked()
+	rewardSnap := srv.buildRewardSnapshotLocked("p0")
 	if !containsString(rewardSnap.Cards[0].Badges, "CO-OP") {
 		t.Fatalf("expected coop reward card badge, got %#v", rewardSnap.Cards[0].Badges)
 	}
@@ -1360,6 +1638,316 @@ func TestBuildSnapshotsMarkCoopContent(t *testing.T) {
 	}
 }
 
+func TestCombatSnapshotRetainsExtendedCombatLogTail(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true}
+	srv.run = &engine.RunState{
+		Mode:      engine.ModeStory,
+		Seed:      19,
+		PartySize: 1,
+		Player: engine.PlayerState{
+			ClassID: "vanguard",
+			Name:    "Host",
+			Deck:    []engine.DeckCard{{CardID: "slash"}},
+		},
+	}
+	srv.combat = &engine.CombatState{
+		Player: engine.CombatActor{Name: "Host", HP: 50, MaxHP: 50, Energy: 3, MaxEnergy: 3},
+		Enemies: []engine.CombatEnemy{
+			{CombatActor: engine.CombatActor{Name: "Slime", HP: 18, MaxHP: 18}},
+		},
+		Coop: engine.CombatCoopState{Enabled: true, EndTurnVotes: []bool{false}},
+	}
+	for i := 1; i <= 18; i++ {
+		srv.combat.Log = append(srv.combat.Log, engine.CombatLogEntry{Turn: i, Text: fmt.Sprintf("entry-%02d", i)})
+	}
+
+	snap := srv.buildCombatSnapshotLocked("p0")
+	if snap == nil {
+		t.Fatal("expected combat snapshot, got nil")
+	}
+	if len(snap.Logs) != 18 {
+		t.Fatalf("expected extended combat log tail to keep 18 entries, got %d", len(snap.Logs))
+	}
+	if !strings.Contains(snap.Logs[0], "entry-01") || !strings.Contains(snap.Logs[len(snap.Logs)-1], "entry-18") {
+		t.Fatalf("expected combat log snapshot to preserve oldest and newest retained entries, got %#v", snap.Logs)
+	}
+}
+
+func TestEventAugmentChoiceStartsDeckActionPhase(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true}
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 13)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	srv.run = run
+	state := ensureSeatState(srv, "p0", run)
+	state.Event = &engine.EventState{Event: lib.Events["inked_vellum"]}
+	srv.phase = phaseEquipment
+	srv.flowOwner = "p0"
+	srv.equipFrom = "event"
+	srv.eventChoice = "scribe_echo"
+	srv.equipOffer = &engine.EquipmentOfferState{EquipmentID: "fang_charm"}
+	srv.currentNode = engine.Node{ID: "n1", Kind: engine.NodeEvent, Act: 1, Floor: 1, Index: 0, Edges: []string{"n2"}}
+
+	srv.handleEquipmentCommandLocked("p0", commandPayload{Action: "take"})
+
+	if srv.phase != phaseDeckAction {
+		t.Fatalf("expected deck action phase, got %q", srv.phase)
+	}
+	if srv.deckActionMode != "event_augment_card" {
+		t.Fatalf("expected event augment deck mode, got %q", srv.deckActionMode)
+	}
+	if len(srv.deckActionIndexes) == 0 {
+		t.Fatal("expected deck action indexes to be populated")
+	}
+	snap := srv.buildDeckActionSnapshotLocked("p0")
+	if snap == nil || len(snap.Cards) == 0 {
+		t.Fatalf("expected deck action snapshot cards, got %#v", snap)
+	}
+}
+
+func TestShopAugmentServiceStartsDeckActionPhase(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true}
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 13)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	run.Player.Gold = 200
+	srv.run = run
+	state := ensureSeatState(srv, "p0", run)
+	state.Shop = &engine.ShopState{Offers: []engine.ShopOffer{{
+		ID:          "service-echo-workshop",
+		Kind:        "service",
+		Name:        "回响工坊",
+		Description: "选择一张攻击牌，本局使其使用时额外抽 1 张牌。",
+		Price:       66,
+		ItemID:      "service_echo_workshop",
+	}}}
+	srv.phase = phaseShop
+
+	srv.handleShopCommandLocked("p0", commandPayload{Action: "buy", ItemIndex: 1})
+
+	if srv.phase != phaseDeckAction {
+		t.Fatalf("expected deck action phase, got %q", srv.phase)
+	}
+	if srv.deckActionMode != "shop_augment_card" {
+		t.Fatalf("expected shop_augment_card mode, got %q", srv.deckActionMode)
+	}
+	if len(srv.deckActionIndexes) == 0 {
+		t.Fatal("expected deck action indexes to be populated")
+	}
+	chosenDeckIndex := srv.deckActionIndexes[0]
+
+	srv.handleDeckActionCommandLocked("p0", commandPayload{Action: "choose", ItemIndex: 1})
+	if srv.phase != phaseShop {
+		t.Fatalf("expected to return to shop phase, got %q", srv.phase)
+	}
+	if len(state.Run.Player.Deck[chosenDeckIndex].Augments) != 1 {
+		t.Fatalf("expected selected card to gain augment, got %#v", state.Run.Player.Deck[chosenDeckIndex].Augments)
+	}
+}
+
+func TestBuildMapSnapshotUsesSeatSpecificProgress(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0", "p1"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true}
+	srv.players["p1"] = &roomPlayer{ID: "p1", Seat: 2, Name: "Guest", ClassID: "arcanist", Connected: true}
+	srv.run = &engine.RunState{
+		Mode:         engine.ModeStory,
+		Seed:         7,
+		Act:          2,
+		CurrentFloor: 3,
+		Player:       engine.PlayerState{Name: "Shared", Gold: 999},
+	}
+	ensureSeatState(srv, "p0", &engine.RunState{Player: engine.PlayerState{Name: "Host", Gold: 88}, History: []string{"H1", "H2"}})
+	ensureSeatState(srv, "p1", &engine.RunState{Player: engine.PlayerState{Name: "Guest", Gold: 123}, History: []string{"G1", "G2", "G3"}})
+
+	snap := srv.buildMapSnapshotLocked("p1")
+	if snap == nil {
+		t.Fatal("expected map snapshot")
+	}
+	if snap.Gold != 123 {
+		t.Fatalf("expected seat-specific gold 123, got %d", snap.Gold)
+	}
+	if len(snap.History) != 3 || snap.History[0] != "G1" || snap.History[2] != "G3" {
+		t.Fatalf("expected seat-specific history, got %v", snap.History)
+	}
+	if snap.Act != 2 || snap.NextFloor != 4 {
+		t.Fatalf("expected shared map progress Act 2 floor 4, got act=%d floor=%d", snap.Act, snap.NextFloor)
+	}
+}
+
+func TestMapVotingSnapshotAndLogsExposeWeightedSummary(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0", "p1", "p2"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true}
+	srv.players["p1"] = &roomPlayer{ID: "p1", Seat: 2, Name: "GuestA", ClassID: "arcanist", Connected: true}
+	srv.players["p2"] = &roomPlayer{ID: "p2", Seat: 3, Name: "GuestB", ClassID: "vanguard", Connected: true}
+	srv.phase = phaseMap
+	srv.run, err = engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 7)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	for _, id := range srv.order {
+		ensureSeatState(srv, id, srv.run)
+	}
+
+	reachable := engine.ReachableNodes(srv.run)
+	if len(reachable) < 2 {
+		t.Fatalf("expected at least two reachable map nodes, got %d", len(reachable))
+	}
+
+	srv.handleMapCommandLocked("p0", commandPayload{Action: "node", ItemIndex: 1})
+	srv.handleMapCommandLocked("p1", commandPayload{Action: "node", ItemIndex: 2})
+
+	snap := srv.snapshotLocked("p0")
+	if len(snap.WaitingOn) != 1 || !strings.Contains(snap.WaitingOn[0], "Seat 3") {
+		t.Fatalf("expected one waiting seat during route vote, got %v", snap.WaitingOn)
+	}
+	if snap.Map == nil || len(snap.Map.VoteStatus) != 3 {
+		t.Fatalf("expected per-seat vote status, got %#v", snap.Map)
+	}
+	if !strings.Contains(strings.Join(snap.Map.VoteStatus, " | "), "route 1") || !strings.Contains(strings.Join(snap.Map.VoteStatus, " | "), "route 2") {
+		t.Fatalf("expected concrete vote choices in map status, got %v", snap.Map.VoteStatus)
+	}
+	if len(snap.Map.VoteSummary) != 2 {
+		t.Fatalf("expected weighted vote summary for two voted routes, got %v", snap.Map.VoteSummary)
+	}
+
+	srv.handleMapCommandLocked("p2", commandPayload{Action: "node", ItemIndex: 2})
+	joinedLog := strings.Join(srv.roomLog, " | ")
+	if !strings.Contains(joinedLog, "Route vote summary:") {
+		t.Fatalf("expected route vote summary in room log, got %q", joinedLog)
+	}
+	if !strings.Contains(joinedLog, "Weighted route roll picked") {
+		t.Fatalf("expected weighted roll result in room log, got %q", joinedLog)
+	}
+}
+
+func TestSnapshotIncludesSharedMapAndStats(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	defer func() {
+		_ = srv.listener.Close()
+	}()
+
+	run, err := engine.NewRun(lib, engine.DefaultProfile(lib), engine.ModeStory, "vanguard", 9)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	run.Player.Name = "Host"
+	run.Stats.CombatTurns = 8
+	run.Stats.Metrics = engine.CombatMetrics{DamageDealt: 42, DamageTaken: 7}
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Name: "Host", ClassID: "vanguard", Ready: true, Connected: true}
+	srv.run = run
+	srv.phase = phaseCombat
+	srv.currentNode = engine.Node{ID: "n2", Act: 1, Floor: 2, Kind: engine.NodeMonster}
+	ensureSeatState(srv, "p0", run)
+	srv.combat = &engine.CombatState{
+		Turn:   3,
+		Player: engine.CombatActor{Name: "Host", HP: 30, MaxHP: 40, Energy: 2, MaxEnergy: 3},
+		Enemy:  engine.CombatEnemy{CombatActor: engine.CombatActor{Name: "Slime", HP: 18, MaxHP: 18}},
+		Enemies: []engine.CombatEnemy{{
+			CombatActor: engine.CombatActor{Name: "Slime", HP: 18, MaxHP: 18},
+		}},
+		Seats: []engine.CombatSeatState{{Metrics: engine.CombatMetrics{DamageDealt: 9, DamageTaken: 2}}},
+	}
+
+	snap := srv.snapshotLocked("p0")
+	if snap.SharedMap == nil {
+		t.Fatalf("expected shared map snapshot when run is active")
+	}
+	if snap.SharedMap.CurrentFloor != 2 || snap.SharedMap.CurrentNodeID != "n2" {
+		t.Fatalf("expected shared map position to include current node, got %#v", snap.SharedMap)
+	}
+	if snap.Stats == nil {
+		t.Fatalf("expected stats snapshot when run is active")
+	}
+	if snap.Stats.SeatName != "Host" || snap.Stats.Combat.DamageDealt != 9 || snap.Stats.Run.DamageDealt != 42 {
+		t.Fatalf("unexpected stats snapshot: %#v", snap.Stats)
+	}
+}
 func TestRenderShopAndEventSnapshotsShowCoopLabels(t *testing.T) {
 	shopSnapshot := &roomSnapshot{
 		SelfID:     "p0",
@@ -1489,12 +2077,12 @@ func TestRoomLogFeedbackMarksCoopOutcomes(t *testing.T) {
 			PotionCapacity: 2,
 		},
 	}
-	srv.partyMembers = []engine.PlayerState{{Name: "Host", HP: 60, MaxHP: 60, MaxEnergy: 3}}
+	seat := ensureSeatState(srv, "p0", srv.run)
 
-	srv.reward = &engine.RewardState{CardChoices: []content.CardDef{lib.Cards["pack_tactics"]}, RelicID: "linked_bracers"}
-	srv.combat = &engine.CombatState{Player: engine.CombatActor{HP: 60, MaxHP: 60}, Reward: *srv.reward}
+	seat.Reward = &engine.RewardState{CardChoices: []content.CardDef{lib.Cards["pack_tactics"]}, RelicID: "linked_bracers"}
+	srv.combat = &engine.CombatState{Player: engine.CombatActor{HP: 60, MaxHP: 60}, Reward: *seat.Reward}
 	srv.currentNode = engine.Node{ID: "A1F1M1", Act: 1, Floor: 1, Kind: engine.NodeMonster, Edges: []string{"A1F2M1"}}
-	if err := srv.applyRewardLocked("pack_tactics", false); err != nil {
+	if err := srv.applyRewardLocked("p0", "pack_tactics", false); err != nil {
 		t.Fatalf("applyRewardLocked() error = %v", err)
 	}
 	joinedRewardLog := strings.Join(srv.roomLog, "\n")
@@ -1506,7 +2094,7 @@ func TestRoomLogFeedbackMarksCoopOutcomes(t *testing.T) {
 	}
 
 	srv.phase = phaseShop
-	srv.shopState = &engine.ShopState{Offers: []engine.ShopOffer{{
+	seat.Shop = &engine.ShopState{Offers: []engine.ShopOffer{{
 		ID:          "service-coop-card",
 		Kind:        "service",
 		Name:        "协同简报",
@@ -1525,7 +2113,7 @@ func TestRoomLogFeedbackMarksCoopOutcomes(t *testing.T) {
 
 	srv.phase = phaseEvent
 	srv.currentNode = engine.Node{ID: "A1F2E1", Act: 1, Floor: 2, Kind: engine.NodeEvent, Edges: []string{"A1F3M1"}}
-	srv.eventState = &engine.EventState{Event: lib.Events["war_council"]}
+	seat.Event = &engine.EventState{Event: lib.Events["war_council"]}
 	srv.handleEventCommandLocked("p0", commandPayload{Action: "choose", ItemIndex: 1})
 	joinedEventLog := strings.Join(srv.roomLog, "\n")
 	if !strings.Contains(joinedEventLog, "Event outcome: [CO-OP] 获得卡牌 "+lib.Cards["pack_tactics"].Name) {

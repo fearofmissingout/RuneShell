@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"cmdcards/internal/content"
@@ -33,282 +32,6 @@ const (
 	phaseDeckAction = "deck_action"
 	phaseSummary    = "summary"
 )
-
-type message struct {
-	Type     string          `json:"type"`
-	Hello    *helloPayload   `json:"hello,omitempty"`
-	Command  *commandPayload `json:"command,omitempty"`
-	Snapshot *roomSnapshot   `json:"snapshot,omitempty"`
-	Error    string          `json:"error,omitempty"`
-}
-
-type helloPayload struct {
-	Name    string `json:"name"`
-	ClassID string `json:"class_id"`
-}
-
-type commandPayload struct {
-	Action      string `json:"action"`
-	Value       string `json:"value,omitempty"`
-	Seat        int    `json:"seat,omitempty"`
-	CardIndex   int    `json:"card_index,omitempty"`
-	ItemIndex   int    `json:"item_index,omitempty"`
-	TargetKind  string `json:"target_kind,omitempty"`
-	TargetIndex int    `json:"target_index,omitempty"`
-}
-
-type roomPlayer struct {
-	ID        string `json:"id"`
-	Seat      int    `json:"seat,omitempty"`
-	Name      string `json:"name"`
-	ClassID   string `json:"class_id"`
-	Ready     bool   `json:"ready"`
-	Connected bool   `json:"connected"`
-}
-
-type actorSnapshot struct {
-	Index     int    `json:"index"`
-	Name      string `json:"name"`
-	HP        int    `json:"hp"`
-	MaxHP     int    `json:"max_hp"`
-	Energy    int    `json:"energy,omitempty"`
-	MaxEnergy int    `json:"max_energy,omitempty"`
-	Block     int    `json:"block"`
-	Status    string `json:"status"`
-}
-
-type enemySnapshot struct {
-	Index  int    `json:"index"`
-	Name   string `json:"name"`
-	HP     int    `json:"hp"`
-	MaxHP  int    `json:"max_hp"`
-	Block  int    `json:"block"`
-	Status string `json:"status"`
-	Intent string `json:"intent"`
-}
-
-type cardSnapshot struct {
-	Index      int      `json:"index"`
-	Name       string   `json:"name"`
-	Cost       int      `json:"cost,omitempty"`
-	Summary    string   `json:"summary"`
-	TargetHint string   `json:"target_hint,omitempty"`
-	Badges     []string `json:"badges,omitempty"`
-}
-
-type nodeSnapshot struct {
-	Index int    `json:"index"`
-	Floor int    `json:"floor"`
-	Kind  string `json:"kind"`
-	Label string `json:"label"`
-}
-
-type choiceSnapshot struct {
-	Index       int      `json:"index"`
-	Label       string   `json:"label"`
-	Description string   `json:"description"`
-	Badges      []string `json:"badges,omitempty"`
-}
-
-type shopOfferSnapshot struct {
-	Index       int      `json:"index"`
-	Kind        string   `json:"kind"`
-	Category    string   `json:"category,omitempty"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Price       int      `json:"price"`
-	Badges      []string `json:"badges,omitempty"`
-}
-
-type equipmentSnapshot struct {
-	Source               string `json:"source"`
-	Slot                 string `json:"slot"`
-	CandidateName        string `json:"candidate_name"`
-	CandidateDescription string `json:"candidate_description"`
-	CurrentName          string `json:"current_name,omitempty"`
-	CurrentDescription   string `json:"current_description,omitempty"`
-	Price                int    `json:"price,omitempty"`
-	CandidateScore       int    `json:"candidate_score"`
-	CurrentScore         int    `json:"current_score,omitempty"`
-}
-
-type lobbySnapshot struct {
-	Mode    string   `json:"mode"`
-	Seed    int64    `json:"seed"`
-	Classes []string `json:"classes"`
-}
-
-type mapSnapshot struct {
-	Mode      string          `json:"mode"`
-	Act       int             `json:"act"`
-	NextFloor int             `json:"next_floor"`
-	Gold      int             `json:"gold"`
-	Party     []actorSnapshot `json:"party"`
-	Reachable []nodeSnapshot  `json:"reachable"`
-	History   []string        `json:"history"`
-}
-
-type combatSnapshot struct {
-	Turn         int             `json:"turn"`
-	Energy       int             `json:"energy"`
-	MaxEnergy    int             `json:"max_energy"`
-	Party        []actorSnapshot `json:"party"`
-	Enemies      []enemySnapshot `json:"enemies"`
-	Hand         []cardSnapshot  `json:"hand"`
-	Potions      []string        `json:"potions"`
-	EndTurnVotes []bool          `json:"end_turn_votes"`
-	VoteStatus   []string        `json:"vote_status,omitempty"`
-	Logs         []string        `json:"logs"`
-	Highlights   []string        `json:"highlights,omitempty"`
-}
-
-type rewardSnapshot struct {
-	Gold        int                `json:"gold"`
-	Source      string             `json:"source"`
-	Cards       []cardSnapshot     `json:"cards"`
-	Potion      string             `json:"potion,omitempty"`
-	Relic       string             `json:"relic,omitempty"`
-	RelicBadges []string           `json:"relic_badges,omitempty"`
-	Equipment   *equipmentSnapshot `json:"equipment,omitempty"`
-	Highlights  []string           `json:"highlights,omitempty"`
-}
-
-type eventSnapshot struct {
-	Name        string           `json:"name"`
-	Description string           `json:"description"`
-	Badges      []string         `json:"badges,omitempty"`
-	Choices     []choiceSnapshot `json:"choices"`
-	Log         []string         `json:"log"`
-	Highlights  []string         `json:"highlights,omitempty"`
-}
-
-type shopSnapshot struct {
-	Gold       int                 `json:"gold"`
-	Offers     []shopOfferSnapshot `json:"offers"`
-	Log        []string            `json:"log"`
-	Highlights []string            `json:"highlights,omitempty"`
-}
-
-type restSnapshot struct {
-	Party []actorSnapshot `json:"party"`
-	Log   []string        `json:"log"`
-}
-
-type deckActionSnapshot struct {
-	Mode     string         `json:"mode"`
-	Title    string         `json:"title"`
-	Subtitle string         `json:"subtitle"`
-	Cards    []cardSnapshot `json:"cards"`
-}
-
-type summarySnapshot struct {
-	Result   string          `json:"result"`
-	Mode     string          `json:"mode"`
-	Act      int             `json:"act"`
-	Floors   int             `json:"floors"`
-	Gold     int             `json:"gold"`
-	DeckSize int             `json:"deck_size"`
-	Party    []actorSnapshot `json:"party"`
-	History  []string        `json:"history"`
-}
-
-type roomSnapshot struct {
-	SelfID           string              `json:"self_id"`
-	Seat             int                 `json:"seat,omitempty"`
-	HostID           string              `json:"host_id"`
-	RoomAddr         string              `json:"room_addr"`
-	Phase            string              `json:"phase"`
-	PhaseTitle       string              `json:"phase_title,omitempty"`
-	PhaseHint        string              `json:"phase_hint,omitempty"`
-	ControlLabel     string              `json:"control_label,omitempty"`
-	RoleNote         string              `json:"role_note,omitempty"`
-	Banner           string              `json:"banner,omitempty"`
-	Players          []roomPlayer        `json:"players"`
-	OfflineSeats     []string            `json:"offline_seats,omitempty"`
-	WaitingOn        []string            `json:"waiting_on,omitempty"`
-	SeatStatus       []string            `json:"seat_status,omitempty"`
-	Recovery         []string            `json:"recovery,omitempty"`
-	Reconnect        []string            `json:"reconnect,omitempty"`
-	Resume           []string            `json:"resume,omitempty"`
-	Commands         []string            `json:"commands,omitempty"`
-	Examples         []string            `json:"examples,omitempty"`
-	CanStart         bool                `json:"can_start"`
-	Lobby            *lobbySnapshot      `json:"lobby,omitempty"`
-	Map              *mapSnapshot        `json:"map,omitempty"`
-	Combat           *combatSnapshot     `json:"combat,omitempty"`
-	Reward           *rewardSnapshot     `json:"reward,omitempty"`
-	Event            *eventSnapshot      `json:"event,omitempty"`
-	Shop             *shopSnapshot       `json:"shop,omitempty"`
-	Rest             *restSnapshot       `json:"rest,omitempty"`
-	Equipment        *equipmentSnapshot  `json:"equipment,omitempty"`
-	Deck             *deckActionSnapshot `json:"deck,omitempty"`
-	Summary          *summarySnapshot    `json:"summary,omitempty"`
-	ChatLog          []string            `json:"chat_log,omitempty"`
-	ChatUnread       int                 `json:"chat_unread,omitempty"`
-	ChatUnreadInView int                 `json:"chat_unread_in_view,omitempty"`
-	TransferNote     string              `json:"transfer_note,omitempty"`
-	RoomLog          []string            `json:"room_log,omitempty"`
-}
-
-type clientConn struct {
-	id       string
-	conn     net.Conn
-	enc      *json.Encoder
-	notice   string
-	resume   []string
-	chatSeen int
-}
-
-type hostTransferRequest struct {
-	FromID string `json:"from_id"`
-	ToID   string `json:"to_id"`
-	Seat   int    `json:"seat"`
-}
-
-type server struct {
-	lib      *content.Library
-	roomAddr string
-	listener net.Listener
-	savePath string
-
-	mu      sync.Mutex
-	nextID  int
-	hostID  string
-	order   []string
-	players map[string]*roomPlayer
-	clients map[string]*clientConn
-	closed  bool
-
-	phase            string
-	mode             engine.GameMode
-	seed             int64
-	chatLog          []string
-	roomLog          []string
-	hostTransfer     *hostTransferRequest
-	restoredFromSave bool
-
-	run          *engine.RunState
-	partyMembers []engine.PlayerState
-	currentNode  engine.Node
-
-	combat     *engine.CombatState
-	reward     *engine.RewardState
-	eventState *engine.EventState
-	shopState  *engine.ShopState
-	restLog    []string
-
-	equipOffer  *engine.EquipmentOfferState
-	equipFrom   string
-	rewardCard  string
-	shopOfferID string
-	eventChoice string
-
-	deckActionMode     string
-	deckActionTitle    string
-	deckActionSubtitle string
-	deckActionIndexes  []int
-	deckActionPrice    int
-}
 
 func formatChannelEntry(source, actor, text string) string {
 	text = strings.TrimSpace(text)
@@ -584,9 +307,9 @@ func (s *server) removeClient(id, logLine string) {
 	if s.phase == phaseCombat && s.combat != nil && idx >= 0 && idx < len(s.combat.Coop.EndTurnVotes) {
 		s.combat.Coop.EndTurnVotes[idx] = true
 		if allVotesReady(s.combat.Coop.EndTurnVotes) {
-			engine.EndPlayerTurn(s.lib, s.run.Player, s.combat)
+			engine.EndPartyTurn(s.lib, s.connectedSeatRunsLocked(), s.combat)
 			if !s.combat.Won && !s.combat.Lost {
-				engine.StartPlayerTurn(s.lib, s.run.Player, s.combat)
+				engine.StartPartyTurn(s.lib, s.connectedSeatRunsLocked(), s.combat)
 			}
 			s.resolveCombatEndLocked()
 		}
@@ -915,57 +638,109 @@ func (s *server) handleLobbyCommandLocked(playerID string, player *roomPlayer, c
 }
 
 func (s *server) handleMapCommandLocked(playerID string, cmd commandPayload) {
-	if !s.requireHostLocked(playerID, "Only the host can choose the next node.") {
-		return
-	}
 	if cmd.Action != "node" {
 		return
 	}
+	state := s.seatStateLocked(playerID)
 	reachable := engine.ReachableNodes(s.run)
 	if cmd.ItemIndex <= 0 || cmd.ItemIndex > len(reachable) {
 		s.appendRoomLogLocked("Invalid node selection.")
 		return
 	}
-	node := reachable[cmd.ItemIndex-1]
+	state.MapVote = cmd.ItemIndex
+	if player := s.players[playerID]; player != nil {
+		s.appendRoomLogLocked(fmt.Sprintf("%s voted for %s.", player.Name, describeMapVoteChoice(reachable, cmd.ItemIndex)))
+	}
+	if !s.allConnectedSeatsDoneLocked(func(seat *seatRunState) bool { return seat.MapVote > 0 }) {
+		return
+	}
+	chosenIndex := s.weightedSeatVoteLocked()
+	if summary := s.mapVoteSummaryLocked(reachable); len(summary) > 0 {
+		s.appendRoomLogLocked("Route vote summary: " + strings.Join(summary, " | "))
+	}
+	if chosenIndex <= 0 || chosenIndex > len(reachable) {
+		s.appendRoomLogLocked("Failed to resolve node vote.")
+		return
+	}
+	node := reachable[chosenIndex-1]
 	selected, err := engine.SelectNode(s.run, node.ID)
 	if err != nil {
 		s.appendRoomLogLocked("Failed to select node: " + err.Error())
 		return
 	}
+	s.clearMapVotesLocked()
 	s.currentNode = selected
-	s.appendRoomLogLocked(fmt.Sprintf("Path chosen: A%d F%d %s.", selected.Act, selected.Floor, engine.NodeKindName(selected.Kind)))
+	if odds := s.mapVoteOddsLocked(chosenIndex); odds != "" {
+		s.appendRoomLogLocked(fmt.Sprintf("Weighted route roll picked %s (%s).", describeMapVoteChoice(reachable, chosenIndex), odds))
+	} else {
+		s.appendRoomLogLocked(fmt.Sprintf("Weighted route roll picked %s.", describeMapVoteChoice(reachable, chosenIndex)))
+	}
+	s.startNodeFlowLocked(selected)
+}
 
+func (s *server) startNodeFlowLocked(selected engine.Node) {
 	switch selected.Kind {
 	case engine.NodeMonster, engine.NodeElite, engine.NodeBoss:
-		party := s.combatPartyLocked()
-		combat, err := engine.StartEncounterForParty(s.lib, s.run, party, selected)
-		if err != nil {
-			s.appendRoomLogLocked("Failed to start combat: " + err.Error())
-			return
-		}
-		s.combat = combat
-		engine.StartPlayerTurn(s.lib, s.run.Player, s.combat)
-		s.phase = phaseCombat
-		s.announcePhaseLocked(fmt.Sprintf("Encounter started: %s.", selected.Label()))
+		s.startCombatNodeFlowLocked(selected)
 	case engine.NodeEvent:
-		state, err := engine.StartEvent(s.lib, s.run, selected)
+		s.startEventNodeFlowLocked(selected)
+	case engine.NodeShop:
+		s.startShopNodeFlowLocked()
+	case engine.NodeRest:
+		s.startRestNodeFlowLocked()
+	}
+}
+
+func (s *server) startCombatNodeFlowLocked(selected engine.Node) {
+	party := s.combatPartyLocked()
+	combat, err := engine.StartEncounterForParty(s.lib, s.run, party, selected)
+	if err != nil {
+		s.appendRoomLogLocked("Failed to start combat: " + err.Error())
+		return
+	}
+	s.combat = combat
+	engine.StartPartyTurn(s.lib, s.connectedSeatRunsLocked(), s.combat)
+	s.phase = phaseCombat
+	s.announcePhaseLocked(fmt.Sprintf("Encounter started: %s.", selected.Label()))
+}
+
+func (s *server) startEventNodeFlowLocked(selected engine.Node) {
+	for _, id := range s.connectedSeatIDsLocked() {
+		_, run := s.seatContextLocked(id)
+		if run == nil {
+			continue
+		}
+		eventState, err := engine.StartEvent(s.lib, run, selected)
 		if err != nil {
 			s.appendRoomLogLocked("Failed to start event: " + err.Error())
 			return
 		}
-		s.eventState = &state
-		s.phase = phaseEvent
-		s.announcePhaseLocked("A shared event choice is waiting.")
-	case engine.NodeShop:
-		shop := engine.StartShop(s.lib, s.run)
-		s.shopState = &shop
-		s.phase = phaseShop
-		s.announcePhaseLocked("The shared shop is open.")
-	case engine.NodeRest:
-		s.restLog = nil
-		s.phase = phaseRest
-		s.announcePhaseLocked("The shared campfire is ready.")
+		state := s.seatStateLocked(id)
+		state.Event = &eventState
+		state.EventDone = false
 	}
+	s.phase = phaseEvent
+	s.announcePhaseLocked("Each player can resolve their own event choice.")
+}
+
+func (s *server) startShopNodeFlowLocked() {
+	for _, id := range s.connectedSeatIDsLocked() {
+		state, run := s.seatContextLocked(id)
+		if state == nil || run == nil {
+			continue
+		}
+		shop := engine.StartShop(s.lib, run)
+		state.Shop = &shop
+		state.ShopDone = false
+	}
+	s.phase = phaseShop
+	s.announcePhaseLocked("Each player has their own shop state. Leave after you finish shopping.")
+}
+
+func (s *server) startRestNodeFlowLocked() {
+	s.restLog = nil
+	s.phase = phaseRest
+	s.announcePhaseLocked("The shared campfire is ready.")
 }
 
 func (s *server) handleCombatCommandLocked(playerID string, player *roomPlayer, cmd commandPayload) {
@@ -986,37 +761,46 @@ func (s *server) handleCombatCommandLocked(playerID string, player *roomPlayer, 
 
 	switch cmd.Action {
 	case "play":
-		if cmd.CardIndex <= 0 || cmd.CardIndex > len(s.combat.Hand) {
+		if memberIndex >= len(s.combat.Seats) || cmd.CardIndex <= 0 || cmd.CardIndex > len(s.combat.Seats[memberIndex].Hand) {
 			s.appendRoomLogLocked("Invalid hand index.")
 			return
 		}
-		cardName := s.lib.Cards[s.combat.Hand[cmd.CardIndex-1].ID].Name
-		if err := engine.PlayCardWithTarget(s.lib, s.run.Player, s.combat, cmd.CardIndex-1, target); err != nil {
+		run := s.seatRunLocked(playerID)
+		if run == nil {
+			s.appendRoomLogLocked("Player run not available.")
+			return
+		}
+		cardName := s.lib.Cards[s.combat.Seats[memberIndex].Hand[cmd.CardIndex-1].ID].Name
+		if err := engine.PlaySeatCardWithTarget(s.lib, run.Player, s.combat, memberIndex, cmd.CardIndex-1, target); err != nil {
 			s.appendRoomLogLocked("Play failed: " + err.Error())
 			return
 		}
 		s.appendCombatActionLogLocked(playerID, fmt.Sprintf("打出 %s", cardName), target)
 		s.handleCoopCombatActionLocked(memberIndex, player.Name)
 	case "potion":
-		if cmd.ItemIndex <= 0 || cmd.ItemIndex > len(s.run.Player.Potions) {
+		if memberIndex >= len(s.combat.Seats) || cmd.ItemIndex <= 0 || cmd.ItemIndex > len(s.combat.Seats[memberIndex].Potions) {
 			s.appendRoomLogLocked("Invalid potion index.")
 			return
 		}
-		potionID := s.run.Player.Potions[cmd.ItemIndex-1]
+		run := s.seatRunLocked(playerID)
+		if run == nil {
+			s.appendRoomLogLocked("Player run not available.")
+			return
+		}
+		potionID := s.combat.Seats[memberIndex].Potions[cmd.ItemIndex-1]
 		potionName := s.lib.Potions[potionID].Name
-		if err := engine.UsePotionWithTarget(s.lib, s.run.Player, s.combat, potionID, target); err != nil {
+		if err := engine.UseSeatPotionWithTarget(s.lib, run.Player, s.combat, memberIndex, potionID, target); err != nil {
 			s.appendRoomLogLocked("Potion failed: " + err.Error())
 			return
 		}
-		s.run.Player.Potions = append(s.run.Player.Potions[:cmd.ItemIndex-1], s.run.Player.Potions[cmd.ItemIndex:]...)
 		s.appendCombatActionLogLocked(playerID, fmt.Sprintf("使用药水 %s", potionName), target)
 		s.handleCoopCombatActionLocked(memberIndex, player.Name)
 	case "end":
 		if engine.RequestEndTurnVote(s.combat, memberIndex) {
 			s.appendCombatActionLogLocked(playerID, "提交结束回合，所有在线座位已就绪", engine.CombatTarget{Kind: engine.CombatTargetNone})
-			engine.EndPlayerTurn(s.lib, s.run.Player, s.combat)
+			engine.EndPartyTurn(s.lib, s.connectedSeatRunsLocked(), s.combat)
 			if !s.combat.Won && !s.combat.Lost {
-				engine.StartPlayerTurn(s.lib, s.run.Player, s.combat)
+				engine.StartPartyTurn(s.lib, s.connectedSeatRunsLocked(), s.combat)
 			}
 		} else {
 			s.appendCombatActionLogLocked(playerID, "提交结束回合，等待其他队友", engine.CombatTarget{Kind: engine.CombatTargetNone})
@@ -1046,7 +830,7 @@ func (s *server) appendCombatActionLogLocked(playerID, action string, target eng
 }
 
 func (s *server) handleCoopCombatActionLocked(memberIndex int, playerName string) {
-	if s.combat == nil || s.run == nil {
+	if s.combat == nil {
 		return
 	}
 	firstForSeat, uniqueActors := engine.RecordCoopAction(s.combat, memberIndex)
@@ -1054,20 +838,29 @@ func (s *server) handleCoopCombatActionLocked(memberIndex int, playerName string
 		return
 	}
 	triggered := false
-	for _, relicID := range s.run.Player.Relics {
-		relic, ok := s.lib.Relics[relicID]
-		if !ok {
-			continue
-		}
-		for _, effect := range relic.Effects {
-			if effect.Trigger != "team_combo" {
+	players := s.connectedSeatRunsLocked()
+	if len(players) == 0 && len(s.combat.SeatPlayers) > 0 {
+		players = append(players, s.combat.SeatPlayers...)
+	}
+	if len(players) == 0 && s.run != nil {
+		players = append(players, s.run.Player)
+	}
+	for seatIndex, run := range players {
+		for _, relicID := range run.Relics {
+			relic, ok := s.lib.Relics[relicID]
+			if !ok {
 				continue
 			}
-			if err := engine.ApplyExternalCombatEffect(s.lib, s.run.Player, s.combat, effect, engine.CombatTarget{}); err != nil {
-				s.appendRoomLogLocked("Coop relic trigger failed: " + err.Error())
-				continue
+			for _, effect := range relic.Effects {
+				if effect.Trigger != "team_combo" {
+					continue
+				}
+				if err := engine.ApplySeatExternalCombatEffect(s.lib, run, s.combat, seatIndex, effect, engine.CombatTarget{}); err != nil {
+					s.appendRoomLogLocked("Coop relic trigger failed: " + err.Error())
+					continue
+				}
+				triggered = true
 			}
-			triggered = true
 		}
 	}
 	if triggered {
@@ -1081,120 +874,142 @@ func (s *server) handleCoopCombatActionLocked(memberIndex int, playerName string
 }
 
 func (s *server) handleRewardCommandLocked(playerID string, cmd commandPayload) {
-	if !s.requireHostLocked(playerID, "Only the host can resolve rewards.") {
-		return
-	}
-	if s.reward == nil || s.combat == nil {
+	state, _ := s.seatContextLocked(playerID)
+	if s.combat == nil || state == nil || state.Reward == nil || state.RewardDone {
 		return
 	}
 
 	switch cmd.Action {
 	case "take":
-		if cmd.ItemIndex <= 0 || cmd.ItemIndex > len(s.reward.CardChoices) {
+		if cmd.ItemIndex <= 0 || cmd.ItemIndex > len(state.Reward.CardChoices) {
 			s.appendRoomLogLocked("Invalid reward card.")
 			return
 		}
-		cardID := s.reward.CardChoices[cmd.ItemIndex-1].ID
-		if s.reward.EquipmentID != "" {
-			if err := s.startEquipmentFlowLocked("reward", cardID, "", ""); err != nil {
+		cardID := state.Reward.CardChoices[cmd.ItemIndex-1].ID
+		if state.Reward.EquipmentID != "" {
+			if err := s.startEquipmentFlowLocked(playerID, "reward", cardID, "", ""); err != nil {
 				s.appendRoomLogLocked("Equipment prompt failed: " + err.Error())
 			}
 			return
 		}
-		if err := s.applyRewardLocked(cardID, false); err != nil {
+		if err := s.applyRewardLocked(playerID, cardID, false); err != nil {
 			s.appendRoomLogLocked("Reward resolution failed: " + err.Error())
 		}
 	case "skip":
-		if s.reward.EquipmentID != "" {
-			if err := s.startEquipmentFlowLocked("reward", "", "", ""); err != nil {
+		if state.Reward.EquipmentID != "" {
+			if err := s.startEquipmentFlowLocked(playerID, "reward", "", "", ""); err != nil {
 				s.appendRoomLogLocked("Equipment prompt failed: " + err.Error())
 			}
 			return
 		}
-		if err := s.applyRewardLocked("", false); err != nil {
+		if err := s.applyRewardLocked(playerID, "", false); err != nil {
 			s.appendRoomLogLocked("Reward resolution failed: " + err.Error())
 		}
 	}
 }
 
 func (s *server) handleEventCommandLocked(playerID string, cmd commandPayload) {
-	if !s.requireHostLocked(playerID, "Only the host can resolve events.") {
+	state, run := s.seatContextLocked(playerID)
+	if state == nil || state.Event == nil || state.EventDone {
 		return
 	}
-	if s.eventState == nil {
-		return
-	}
-	if cmd.Action != "choose" || cmd.ItemIndex <= 0 || cmd.ItemIndex > len(s.eventState.Event.Choices) {
+	if cmd.Action != "choose" || cmd.ItemIndex <= 0 || cmd.ItemIndex > len(state.Event.Event.Choices) {
 		s.appendRoomLogLocked("Invalid event choice.")
 		return
 	}
-	choice := s.eventState.Event.Choices[cmd.ItemIndex-1]
+	choice := state.Event.Event.Choices[cmd.ItemIndex-1]
 	if engine.EventChoiceEquipmentID(choice) != "" {
-		if err := s.startEquipmentFlowLocked("event", "", "", choice.ID); err != nil {
+		if err := s.startEquipmentFlowLocked(playerID, "event", "", "", choice.ID); err != nil {
 			s.appendRoomLogLocked("Equipment prompt failed: " + err.Error())
 		}
 		return
 	}
 
-	beforeHP, beforeMax := s.leaderVitalsLocked()
-	logStart := len(s.eventState.Log)
-	if err := engine.ResolveEventDecision(s.lib, s.run, s.eventState, choice.ID, true); err != nil {
+	logStart := len(state.Event.Log)
+	if err := engine.ResolveEventDecision(s.lib, run, state.Event, choice.ID, true); err != nil {
 		s.appendRoomLogLocked("Event resolution failed: " + err.Error())
 		return
 	}
-	s.applyLeaderDeltaLocked(beforeHP, beforeMax)
-	if err := engine.AdvanceNonCombatNode(s.run, s.currentNode); err != nil {
+	if err := engine.AdvanceNonCombatNode(run, s.currentNode); err != nil {
 		s.appendRoomLogLocked("Failed to advance after event: " + err.Error())
 		return
 	}
+	state.EventDone = true
 	s.appendRoomLogLocked(fmt.Sprintf("Event resolved: %s.", choice.Label))
-	s.appendEventOutcomeLogsLocked(choice, logStart)
-	s.afterNodeAdvanceLocked()
+	s.appendEventOutcomeLogsLocked(state.Event, choice, logStart)
+	if s.allConnectedSeatsDoneLocked(func(seat *seatRunState) bool { return seat.EventDone }) {
+		if err := s.advanceSharedRunLocked(); err != nil {
+			s.appendRoomLogLocked("Failed to advance shared map after event: " + err.Error())
+			return
+		}
+		s.afterNodeAdvanceLocked()
+	}
 }
 
 func (s *server) handleShopCommandLocked(playerID string, cmd commandPayload) {
-	if !s.requireHostLocked(playerID, "Only the host can resolve the shop.") {
-		return
-	}
-	if s.shopState == nil {
+	state, run := s.seatContextLocked(playerID)
+	if state == nil || state.Shop == nil || state.ShopDone {
 		return
 	}
 
 	switch cmd.Action {
 	case "leave":
-		if err := engine.AdvanceNonCombatNode(s.run, s.currentNode); err != nil {
+		if err := engine.AdvanceNonCombatNode(run, s.currentNode); err != nil {
 			s.appendRoomLogLocked("Failed to leave shop: " + err.Error())
 			return
 		}
-		s.appendRoomLogLocked("Left the shop.")
-		s.afterNodeAdvanceLocked()
+		state.ShopDone = true
+		if player := s.players[playerID]; player != nil {
+			s.appendRoomLogLocked(fmt.Sprintf("%s left their shop.", player.Name))
+		}
+		if s.allConnectedSeatsDoneLocked(func(seat *seatRunState) bool { return seat.ShopDone }) {
+			if err := s.advanceSharedRunLocked(); err != nil {
+				s.appendRoomLogLocked("Failed to leave shop: " + err.Error())
+				return
+			}
+			s.afterNodeAdvanceLocked()
+		}
 	case "buy":
-		if cmd.ItemIndex <= 0 || cmd.ItemIndex > len(s.shopState.Offers) {
+		if cmd.ItemIndex <= 0 || cmd.ItemIndex > len(state.Shop.Offers) {
 			s.appendRoomLogLocked("Invalid shop offer.")
 			return
 		}
-		offer := s.shopState.Offers[cmd.ItemIndex-1]
+		offer := state.Shop.Offers[cmd.ItemIndex-1]
 		if offer.Kind == "equipment" {
-			if err := s.startEquipmentFlowLocked("shop", "", offer.ID, ""); err != nil {
+			if err := s.startEquipmentFlowLocked(playerID, "shop", "", offer.ID, ""); err != nil {
 				s.appendRoomLogLocked("Equipment prompt failed: " + err.Error())
 			}
 			return
 		}
 		if offer.Kind == "remove" {
-			if err := s.startDeckActionLocked("shop_remove", offer.Price); err != nil {
+			if err := s.startDeckActionLocked(playerID, "shop_remove", offer.Price); err != nil {
 				s.appendRoomLogLocked(err.Error())
 			}
 			return
 		}
-		beforeHP, beforeMax := s.leaderVitalsLocked()
-		logStart := len(s.shopState.Log)
-		if err := engine.ApplyShopPurchase(s.lib, s.run, s.shopState, offer.ID); err != nil {
+		if offer.Kind == "service" {
+			plan, err := engine.ShopOfferDeckActionPlan(s.lib, run, state.Shop, offer.ID)
+			if err != nil {
+				s.appendRoomLogLocked("Purchase failed: " + err.Error())
+				return
+			}
+			if plan != nil {
+				s.shopOfferID = offer.ID
+				if err := s.startDeckActionPlanLocked(playerID, *plan); err != nil {
+					s.appendRoomLogLocked("Purchase failed: " + err.Error())
+				}
+				return
+			}
+		}
+		logStart := len(state.Shop.Log)
+		if err := engine.ApplyShopPurchase(s.lib, run, state.Shop, offer.ID); err != nil {
 			s.appendRoomLogLocked("Purchase failed: " + err.Error())
 			return
 		}
-		s.applyLeaderDeltaLocked(beforeHP, beforeMax)
-		s.appendRoomLogLocked(fmt.Sprintf("Purchased %s.", offer.Name))
-		s.appendShopOutcomeLogsLocked(offer, logStart)
+		if player := s.players[playerID]; player != nil {
+			s.appendRoomLogLocked(fmt.Sprintf("%s purchased %s.", player.Name, offer.Name))
+		}
+		s.appendShopOutcomeLogsLocked(state.Shop, offer, logStart)
 	}
 }
 
@@ -1205,22 +1020,36 @@ func (s *server) handleRestCommandLocked(playerID string, cmd commandPayload) {
 	if cmd.Action != "heal" && cmd.Action != "upgrade" {
 		return
 	}
-	if cmd.Action == "upgrade" && len(engine.UpgradableCardIndexes(s.lib, s.run.Player.Deck)) > 0 {
-		if err := s.startDeckActionLocked("rest_upgrade", 0); err != nil {
-			s.appendRoomLogLocked(err.Error())
+	ids := s.connectedSeatIDsLocked()
+	logs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		state, run := s.seatContextLocked(id)
+		if run == nil {
+			continue
 		}
-		return
+		restState, err := engine.ResolveRest(s.lib, run, cmd.Action)
+		if err != nil {
+			s.appendRoomLogLocked("Campfire action failed: " + err.Error())
+			return
+		}
+		if err := engine.AdvanceNonCombatNode(run, s.currentNode); err != nil {
+			s.appendRoomLogLocked("Failed to leave campfire: " + err.Error())
+			return
+		}
+		name := id
+		if player := s.players[id]; player != nil && strings.TrimSpace(player.Name) != "" {
+			name = player.Name
+		}
+		for _, line := range restState.Log {
+			logs = append(logs, fmt.Sprintf("%s: %s", name, line))
+		}
+		if state != nil {
+			state.RestLog = append([]string{}, restState.Log...)
+		}
 	}
-
-	beforeHP, beforeMax := s.leaderVitalsLocked()
-	state, err := engine.ResolveRest(s.lib, s.run, cmd.Action)
-	if err != nil {
-		s.appendRoomLogLocked("Campfire action failed: " + err.Error())
-		return
-	}
-	s.restLog = append([]string{}, state.Log...)
-	s.applyLeaderDeltaLocked(beforeHP, beforeMax)
-	if err := engine.AdvanceNonCombatNode(s.run, s.currentNode); err != nil {
+	s.rebuildSharedRunPlayerLocked()
+	s.restLog = logs
+	if err := s.advanceSharedRunLocked(); err != nil {
 		s.appendRoomLogLocked("Failed to leave campfire: " + err.Error())
 		return
 	}
@@ -1229,10 +1058,14 @@ func (s *server) handleRestCommandLocked(playerID string, cmd commandPayload) {
 }
 
 func (s *server) handleEquipmentCommandLocked(playerID string, cmd commandPayload) {
-	if !s.requireHostLocked(playerID, "Only the host can resolve equipment choices.") {
+	if s.flowOwner != playerID {
 		return
 	}
 	if s.equipOffer == nil {
+		return
+	}
+	state, run := s.seatContextLocked(playerID)
+	if state == nil || run == nil {
 		return
 	}
 
@@ -1243,47 +1076,74 @@ func (s *server) handleEquipmentCommandLocked(playerID string, cmd commandPayloa
 
 	switch s.equipFrom {
 	case "reward":
-		if err := s.applyRewardLocked(s.rewardCard, take); err != nil {
+		if err := s.applyRewardLocked(playerID, s.rewardCard, take); err != nil {
 			s.appendRoomLogLocked("Reward equipment failed: " + err.Error())
 			return
 		}
 		s.appendRoomLogLocked(equipmentDecisionText(take, s.equipOffer.EquipmentID))
+		s.clearEquipmentFlowLocked()
+		if s.phase != phaseMap && s.phase != phaseSummary {
+			s.phase = phaseReward
+		}
 	case "shop":
-		logStart := len(s.shopState.Log)
-		if err := engine.ApplyShopEquipmentPurchase(s.lib, s.run, s.shopState, s.shopOfferID, take); err != nil {
+		logStart := len(state.Shop.Log)
+		if err := engine.ApplyShopEquipmentPurchase(s.lib, run, state.Shop, s.shopOfferID, take); err != nil {
 			s.appendRoomLogLocked("Shop equipment failed: " + err.Error())
 			return
 		}
 		s.appendRoomLogLocked(equipmentDecisionText(take, s.equipOffer.EquipmentID))
-		if offer, err := engineShopOfferByID(s.shopState, s.shopOfferID); err == nil {
-			s.appendShopOutcomeLogsLocked(offer, logStart)
+		if offer, err := engineShopOfferByID(state.Shop, s.shopOfferID); err == nil {
+			s.appendShopOutcomeLogsLocked(state.Shop, offer, logStart)
 		}
 		s.clearEquipmentFlowLocked()
 		s.phase = phaseShop
-		s.announcePhaseLocked("Returned to the shared shop.")
+		s.announcePhaseLocked("Returned to personal shop resolution.")
 	case "event":
-		beforeHP, beforeMax := s.leaderVitalsLocked()
-		logStart := len(s.eventState.Log)
-		choice := eventChoiceByID(s.eventState, s.eventChoice)
-		if err := engine.ResolveEventDecision(s.lib, s.run, s.eventState, s.eventChoice, take); err != nil {
+		logStart := len(state.Event.Log)
+		choice := eventChoiceByID(state.Event, s.eventChoice)
+		if choice != nil {
+			if plan, err := engine.EventChoiceDeckActionPlan(s.lib, run, *choice, take); err != nil {
+				s.appendRoomLogLocked("Event equipment failed: " + err.Error())
+				return
+			} else if plan != nil {
+				if err := s.startDeckActionPlanLocked(playerID, *plan); err != nil {
+					s.appendRoomLogLocked("Event equipment failed: " + err.Error())
+				}
+				return
+			}
+		}
+		if err := engine.ResolveEventDecision(s.lib, run, state.Event, s.eventChoice, take); err != nil {
 			s.appendRoomLogLocked("Event equipment failed: " + err.Error())
 			return
 		}
-		s.applyLeaderDeltaLocked(beforeHP, beforeMax)
-		if err := engine.AdvanceNonCombatNode(s.run, s.currentNode); err != nil {
+		if err := engine.AdvanceNonCombatNode(run, s.currentNode); err != nil {
 			s.appendRoomLogLocked("Failed to advance after event: " + err.Error())
 			return
 		}
+		state.EventDone = true
 		s.appendRoomLogLocked(equipmentDecisionText(take, s.equipOffer.EquipmentID))
 		if choice != nil {
-			s.appendEventOutcomeLogsLocked(*choice, logStart)
+			s.appendEventOutcomeLogsLocked(state.Event, *choice, logStart)
 		}
-		s.afterNodeAdvanceLocked()
+		s.clearEquipmentFlowLocked()
+		if s.allConnectedSeatsDoneLocked(func(seat *seatRunState) bool { return seat.EventDone }) {
+			if err := s.advanceSharedRunLocked(); err != nil {
+				s.appendRoomLogLocked("Failed to advance after event: " + err.Error())
+				return
+			}
+			s.afterNodeAdvanceLocked()
+		} else {
+			s.phase = phaseEvent
+		}
 	}
 }
 
 func (s *server) handleDeckActionCommandLocked(playerID string, cmd commandPayload) {
-	if !s.requireHostLocked(playerID, "Only the host can resolve deck actions.") {
+	if s.flowOwner != playerID {
+		return
+	}
+	state, run := s.seatContextLocked(playerID)
+	if run == nil || state == nil {
 		return
 	}
 	if cmd.Action == "back" {
@@ -1298,27 +1158,66 @@ func (s *server) handleDeckActionCommandLocked(playerID string, cmd commandPaylo
 	deckIndex := s.deckActionIndexes[cmd.ItemIndex-1]
 	switch s.deckActionMode {
 	case "rest_upgrade":
-		name, err := engine.UpgradeDeckCard(s.lib, &s.run.Player, deckIndex)
+		name, err := engine.UpgradeDeckCard(s.lib, &run.Player, deckIndex)
 		if err != nil {
 			s.appendRoomLogLocked("Upgrade failed: " + err.Error())
 			return
 		}
-		s.restLog = []string{"Upgraded " + name}
-		if err := engine.AdvanceNonCombatNode(s.run, s.currentNode); err != nil {
+		state.RestLog = []string{"Upgraded " + name}
+		if err := engine.AdvanceNonCombatNode(run, s.currentNode); err != nil {
 			s.appendRoomLogLocked("Failed to leave campfire: " + err.Error())
 			return
 		}
 		s.appendRoomLogLocked("Card upgraded at campfire.")
+		s.clearDeckActionLocked()
 		s.afterNodeAdvanceLocked()
 	case "shop_remove":
-		if err := engine.ApplyShopCardRemoval(s.lib, s.run, s.shopState, "remove-card", deckIndex); err != nil {
+		if err := engine.ApplyShopCardRemoval(s.lib, run, state.Shop, "remove-card", deckIndex); err != nil {
 			s.appendRoomLogLocked("Card removal failed: " + err.Error())
 			return
 		}
 		s.appendRoomLogLocked("Card removed from the deck.")
 		s.clearDeckActionLocked()
 		s.phase = phaseShop
-		s.announcePhaseLocked("Returned to the shared shop.")
+		s.announcePhaseLocked("Returned to personal shop resolution.")
+	case "shop_augment_card":
+		if err := engine.ApplyShopServiceWithDeckChoice(s.lib, run, state.Shop, s.shopOfferID, deckIndex); err != nil {
+			s.appendRoomLogLocked("Shop augment failed: " + err.Error())
+			return
+		}
+		s.appendRoomLogLocked("Workshop service applied to the selected card.")
+		s.clearDeckActionLocked()
+		s.phase = phaseShop
+		s.announcePhaseLocked("Returned to personal shop resolution.")
+	case "event_augment_card":
+		if state.Event == nil {
+			s.appendRoomLogLocked("Event augment failed: event state unavailable.")
+			return
+		}
+		logStart := len(state.Event.Log)
+		choice := eventChoiceByID(state.Event, s.eventChoice)
+		if err := engine.ResolveEventDecisionWithDeckChoice(s.lib, run, state.Event, s.eventChoice, s.deckActionTakeEquip, deckIndex); err != nil {
+			s.appendRoomLogLocked("Event augment failed: " + err.Error())
+			return
+		}
+		if err := engine.AdvanceNonCombatNode(run, s.currentNode); err != nil {
+			s.appendRoomLogLocked("Failed to advance after event: " + err.Error())
+			return
+		}
+		state.EventDone = true
+		if choice != nil {
+			s.appendEventOutcomeLogsLocked(state.Event, *choice, logStart)
+		}
+		s.clearDeckActionLocked()
+		if s.allConnectedSeatsDoneLocked(func(seat *seatRunState) bool { return seat.EventDone }) {
+			if err := s.advanceSharedRunLocked(); err != nil {
+				s.appendRoomLogLocked("Failed to advance after event: " + err.Error())
+				return
+			}
+			s.afterNodeAdvanceLocked()
+		} else {
+			s.phase = phaseEvent
+		}
 	}
 }
 
@@ -1346,7 +1245,6 @@ func (s *server) startRunLocked() error {
 	if len(players) == 0 {
 		return fmt.Errorf("no connected players")
 	}
-	leader := buildSharedLeader(players)
 	if s.seed == 0 {
 		s.seed = time.Now().UnixNano()
 	}
@@ -1363,15 +1261,50 @@ func (s *server) startRunLocked() error {
 		CurrentFloor: 0,
 		PartySize:    len(players),
 		Status:       engine.RunStatusActive,
-		Player:       leader,
+		Player:       players[0],
 		Map:          graph,
 		Reachable:    firstFloorNodeIDs(graph),
 		History:      []string{},
 	}
-	s.partyMembers = clonePartyStates(players)
-	s.partyMembers[0].HP = leader.HP
-	s.partyMembers[0].MaxHP = leader.MaxHP
-	s.partyMembers[0].MaxEnergy = leader.MaxEnergy
+	if s.seatStates == nil {
+		s.seatStates = map[string]*seatRunState{}
+	}
+	sharedGraph := s.run.Map
+	reachable := append([]string{}, s.run.Reachable...)
+	for _, id := range s.order {
+		player := s.players[id]
+		if player == nil || !player.Connected {
+			continue
+		}
+		state := s.seatStateLocked(id)
+		base, err := buildBasePlayerState(s.lib, player.ClassID, player.Name)
+		if err != nil {
+			return err
+		}
+		state.Run = &engine.RunState{
+			Version:      1,
+			Mode:         s.mode,
+			Seed:         s.seed,
+			Act:          1,
+			CurrentFloor: 0,
+			PartySize:    len(players),
+			Status:       engine.RunStatusActive,
+			Player:       base,
+			Map:          sharedGraph,
+			Reachable:    append([]string{}, reachable...),
+			History:      []string{},
+		}
+		state.Reward = nil
+		state.RewardDone = false
+		state.Event = nil
+		state.EventDone = false
+		state.Shop = nil
+		state.ShopDone = false
+		state.MapVote = 0
+		state.RestLog = nil
+	}
+	s.flowOwner = ""
+	s.rebuildSharedRunPlayerLocked()
 	s.clearNodeFlowLocked()
 	s.phase = phaseMap
 	s.appendRoomLogLocked(fmt.Sprintf("Run started: %s seed=%d.", s.mode, s.seed))
@@ -1385,20 +1318,30 @@ func (s *server) resolveCombatEndLocked() {
 	}
 	if s.combat.Won {
 		s.syncPartyFromCombatLocked()
-		engine.FinishCombat(s.lib, s.run, s.currentNode, s.combat)
-		reward := s.combat.Reward
-		s.reward = &reward
+		for _, id := range s.connectedSeatIDsLocked() {
+			seat := s.seatStateLocked(id)
+			if seat == nil || seat.Run == nil {
+				continue
+			}
+			reward := engine.BuildReward(s.lib, seat.Run, s.currentNode, s.combat.RewardBasis)
+			seat.Reward = &reward
+			seat.RewardDone = false
+		}
 		s.phase = phaseReward
-		s.appendRoomLogLocked("Combat won. Reward phase started.")
-		s.announcePhaseLocked("Choose the shared reward.")
+		s.appendRoomLogLocked("Combat won. Personal reward phase started.")
+		s.announcePhaseLocked("Each player can resolve their own reward.")
 		return
 	}
 	if s.combat.Lost {
 		s.syncPartyFromCombatLocked()
 		s.run.Status = engine.RunStatusLost
-		s.run.Player.HP = 0
-		for i := range s.partyMembers {
-			s.partyMembers[i].HP = 0
+		for _, id := range s.order {
+			seat := s.seatStateLocked(id)
+			if seat == nil || seat.Run == nil {
+				continue
+			}
+			seat.Run.Status = engine.RunStatusLost
+			seat.Run.Player.HP = 0
 		}
 		s.phase = phaseSummary
 		s.appendRoomLogLocked("The party was defeated.")
@@ -1406,13 +1349,17 @@ func (s *server) resolveCombatEndLocked() {
 	}
 }
 
-func (s *server) applyRewardLocked(cardID string, takeEquipment bool) error {
-	s.syncPartyFromCombatLocked()
-	beforeHP, beforeMax := s.leaderVitalsLocked()
-	if err := engine.ApplyCombatResultDecision(s.lib, s.run, s.currentNode, s.combat, cardID, takeEquipment); err != nil {
+func (s *server) applyRewardLocked(playerID, cardID string, takeEquipment bool) error {
+	state, run := s.seatContextLocked(playerID)
+	if state == nil || state.Run == nil || state.Reward == nil || s.combat == nil {
+		return fmt.Errorf("reward not available")
+	}
+	combatCopy := *s.combat
+	combatCopy.Reward = *state.Reward
+	if err := engine.ApplyCombatResultDecision(s.lib, run, s.currentNode, &combatCopy, cardID, takeEquipment); err != nil {
 		return err
 	}
-	s.applyLeaderDeltaLocked(beforeHP, beforeMax)
+	state.RewardDone = true
 	if cardID != "" {
 		s.appendRoomLogLocked(fmt.Sprintf("Reward card added: %s.", s.lib.Cards[cardID].Name))
 		if slices.Contains(s.lib.Cards[cardID].Flags, "coop_only") {
@@ -1421,18 +1368,23 @@ func (s *server) applyRewardLocked(cardID string, takeEquipment bool) error {
 	} else {
 		s.appendRoomLogLocked("Reward card skipped.")
 	}
-	if s.reward != nil && s.reward.RelicID != "" && slices.Contains(s.lib.Relics[s.reward.RelicID].Flags, "coop_only") {
-		s.appendRoomLogLocked(fmt.Sprintf("Reward included CO-OP relic: %s.", s.lib.Relics[s.reward.RelicID].Name))
+	if state.Reward.RelicID != "" && slices.Contains(s.lib.Relics[state.Reward.RelicID].Flags, "coop_only") {
+		s.appendRoomLogLocked(fmt.Sprintf("Reward included CO-OP relic: %s.", s.lib.Relics[state.Reward.RelicID].Name))
 	}
-	s.afterNodeAdvanceLocked()
+	if s.allConnectedSeatsDoneLocked(func(seat *seatRunState) bool { return seat.RewardDone }) {
+		if err := s.advanceSharedRunLocked(); err != nil {
+			return err
+		}
+		s.afterNodeAdvanceLocked()
+	}
 	return nil
 }
 
-func (s *server) appendShopOutcomeLogsLocked(offer engine.ShopOffer, logStart int) {
-	if s.shopState == nil {
+func (s *server) appendShopOutcomeLogsLocked(shop *engine.ShopState, offer engine.ShopOffer, logStart int) {
+	if shop == nil {
 		return
 	}
-	for _, line := range s.shopState.Log[logStart:] {
+	for _, line := range shop.Log[logStart:] {
 		s.appendRoomLogLocked("Shop outcome: " + line)
 	}
 	if slices.Contains(shopOfferBadges(s.lib, offer), "CO-OP") {
@@ -1440,11 +1392,11 @@ func (s *server) appendShopOutcomeLogsLocked(offer engine.ShopOffer, logStart in
 	}
 }
 
-func (s *server) appendEventOutcomeLogsLocked(choice content.EventChoiceDef, logStart int) {
-	if s.eventState == nil {
+func (s *server) appendEventOutcomeLogsLocked(eventState *engine.EventState, choice content.EventChoiceDef, logStart int) {
+	if eventState == nil {
 		return
 	}
-	for _, line := range s.eventState.Log[logStart:] {
+	for _, line := range eventState.Log[logStart:] {
 		if line == choice.Label {
 			continue
 		}
@@ -1471,6 +1423,8 @@ func coopOutcomeLinesFromChoice(lib *content.Library, choice content.EventChoice
 			if relic, ok := lib.Relics[effect.ResultID]; ok && slices.Contains(relic.Flags, "coop_only") {
 				out = append(out, fmt.Sprintf("Event upgraded into CO-OP relic: %s.", relic.Name))
 			}
+		case "augment_card":
+			out = append(out, "Event applies a card augment choice.")
 		}
 	}
 	return out
@@ -1500,32 +1454,36 @@ func eventChoiceByID(state *engine.EventState, choiceID string) *content.EventCh
 	return nil
 }
 
-func (s *server) startEquipmentFlowLocked(source, rewardCard, shopOfferID, eventChoice string) error {
+func (s *server) startEquipmentFlowLocked(playerID, source, rewardCard, shopOfferID, eventChoice string) error {
+	state, run := s.seatContextLocked(playerID)
+	if state == nil || run == nil {
+		return fmt.Errorf("player state not available")
+	}
 	var (
 		equipmentID string
 		price       int
 	)
 	switch source {
 	case "reward":
-		if s.reward == nil {
+		if state.Reward == nil {
 			return fmt.Errorf("reward not available")
 		}
-		equipmentID = s.reward.EquipmentID
+		equipmentID = state.Reward.EquipmentID
 	case "shop":
-		if s.shopState == nil {
+		if state.Shop == nil {
 			return fmt.Errorf("shop not available")
 		}
-		offer, err := findShopOfferByID(s.shopState, shopOfferID)
+		offer, err := findShopOfferByID(state.Shop, shopOfferID)
 		if err != nil {
 			return err
 		}
 		equipmentID = offer.ItemID
 		price = offer.Price
 	case "event":
-		if s.eventState == nil {
+		if state.Event == nil {
 			return fmt.Errorf("event not available")
 		}
-		for _, choice := range s.eventState.Event.Choices {
+		for _, choice := range state.Event.Event.Choices {
 			if choice.ID == eventChoice {
 				equipmentID = engine.EventChoiceEquipmentID(choice)
 				break
@@ -1537,11 +1495,12 @@ func (s *server) startEquipmentFlowLocked(source, rewardCard, shopOfferID, event
 	if equipmentID == "" {
 		return fmt.Errorf("no equipment available")
 	}
-	offer, err := engine.BuildEquipmentOffer(s.lib, s.run.Player, equipmentID, source, price)
+	offer, err := engine.BuildEquipmentOffer(s.lib, run.Player, equipmentID, source, price)
 	if err != nil {
 		return err
 	}
 	s.equipOffer = &offer
+	s.flowOwner = playerID
 	s.equipFrom = source
 	s.rewardCard = rewardCard
 	s.shopOfferID = shopOfferID
@@ -1551,22 +1510,26 @@ func (s *server) startEquipmentFlowLocked(source, rewardCard, shopOfferID, event
 	return nil
 }
 
-func (s *server) startDeckActionLocked(mode string, price int) error {
+func (s *server) startDeckActionLocked(playerID, mode string, price int) error {
+	_, run := s.seatContextLocked(playerID)
+	if run == nil {
+		return fmt.Errorf("run not available")
+	}
 	indexes := []int{}
 	title := ""
 	subtitle := ""
 
 	switch mode {
 	case "rest_upgrade":
-		indexes = engine.UpgradableCardIndexes(s.lib, s.run.Player.Deck)
+		indexes = engine.UpgradableCardIndexes(s.lib, run.Player.Deck)
 		title = "Upgrade a card"
 		subtitle = "Choose one card to upgrade at the campfire."
 	case "shop_remove":
-		if len(s.run.Player.Deck) == 0 {
+		if len(run.Player.Deck) == 0 {
 			return fmt.Errorf("deck is empty")
 		}
-		indexes = make([]int, 0, len(s.run.Player.Deck))
-		for i := range s.run.Player.Deck {
+		indexes = make([]int, 0, len(run.Player.Deck))
+		for i := range run.Player.Deck {
 			indexes = append(indexes, i)
 		}
 		title = "Remove a card"
@@ -1584,8 +1547,32 @@ func (s *server) startDeckActionLocked(mode string, price int) error {
 	s.deckActionSubtitle = subtitle
 	s.deckActionIndexes = indexes
 	s.deckActionPrice = price
+	s.deckActionEffect = nil
+	s.deckActionTakeEquip = false
+	s.flowOwner = playerID
 	s.phase = phaseDeckAction
 	s.announcePhaseLocked(title + ".")
+	return nil
+}
+
+func (s *server) startDeckActionPlanLocked(playerID string, plan engine.DeckActionPlan) error {
+	if len(plan.Indexes) == 0 {
+		return fmt.Errorf("no valid cards for this action")
+	}
+	s.deckActionMode = plan.Mode
+	s.deckActionTitle = plan.Title
+	s.deckActionSubtitle = plan.Subtitle
+	s.deckActionIndexes = append([]int{}, plan.Indexes...)
+	s.deckActionPrice = plan.Price
+	s.deckActionEffect = nil
+	s.deckActionTakeEquip = plan.TakeEquipment
+	if plan.Effect != nil {
+		effect := *plan.Effect
+		s.deckActionEffect = &effect
+	}
+	s.flowOwner = playerID
+	s.phase = phaseDeckAction
+	s.announcePhaseLocked(plan.Title + ".")
 	return nil
 }
 
@@ -1598,6 +1585,7 @@ func (s *server) cancelDeckActionLocked() {
 	default:
 		s.phase = phaseMap
 	}
+	s.flowOwner = ""
 	s.clearDeckActionLocked()
 	s.announcePhaseLocked("Returned after cancelling the deck action.")
 }
@@ -1623,16 +1611,28 @@ func (s *server) afterNodeAdvanceLocked() {
 func (s *server) clearNodeFlowLocked() {
 	s.currentNode = engine.Node{}
 	s.combat = nil
-	s.reward = nil
-	s.eventState = nil
-	s.shopState = nil
 	s.restLog = nil
+	s.flowOwner = ""
+	s.clearMapVotesLocked()
+	for _, state := range s.seatStates {
+		if state == nil {
+			continue
+		}
+		state.Reward = nil
+		state.RewardDone = false
+		state.Event = nil
+		state.EventDone = false
+		state.Shop = nil
+		state.ShopDone = false
+		state.RestLog = nil
+	}
 	s.clearEquipmentFlowLocked()
 	s.clearDeckActionLocked()
 }
 
 func (s *server) clearEquipmentFlowLocked() {
 	s.equipOffer = nil
+	s.flowOwner = ""
 	s.equipFrom = ""
 	s.rewardCard = ""
 	s.shopOfferID = ""
@@ -1645,11 +1645,27 @@ func (s *server) clearDeckActionLocked() {
 	s.deckActionSubtitle = ""
 	s.deckActionIndexes = nil
 	s.deckActionPrice = 0
+	s.deckActionEffect = nil
+	s.deckActionTakeEquip = false
+	s.shopOfferID = ""
 }
 
 func (s *server) resetLobbyLocked() {
 	s.run = nil
-	s.partyMembers = nil
+	for _, state := range s.seatStates {
+		if state == nil {
+			continue
+		}
+		state.Run = nil
+		state.Reward = nil
+		state.RewardDone = false
+		state.Event = nil
+		state.EventDone = false
+		state.Shop = nil
+		state.ShopDone = false
+		state.MapVote = 0
+		state.RestLog = nil
+	}
 	s.clearNodeFlowLocked()
 	s.phase = phaseLobby
 	s.seed = time.Now().UnixNano()
@@ -1705,1364 +1721,6 @@ func (s *server) requireHostLocked(playerID, reason string) bool {
 	}
 	s.appendRoomLogLocked(reason)
 	return false
-}
-
-func (s *server) buildPartyStatesLocked() ([]engine.PlayerState, error) {
-	players := make([]engine.PlayerState, 0, len(s.order))
-	for _, id := range s.order {
-		player := s.players[id]
-		if player == nil || !player.Connected {
-			continue
-		}
-		state, err := buildBasePlayerState(s.lib, player.ClassID, player.Name)
-		if err != nil {
-			return nil, err
-		}
-		players = append(players, state)
-	}
-	return players, nil
-}
-
-func (s *server) combatPartyLocked() []engine.PlayerState {
-	if s.run == nil {
-		return nil
-	}
-	party := make([]engine.PlayerState, 0, len(s.partyMembers))
-	leader := s.run.Player
-	if len(s.partyMembers) > 0 {
-		leader.Name = s.partyMembers[0].Name
-		leader.ClassID = s.partyMembers[0].ClassID
-		leader.HP = s.partyMembers[0].HP
-		leader.MaxHP = s.partyMembers[0].MaxHP
-	}
-	party = append(party, leader)
-	for i := 1; i < len(s.partyMembers); i++ {
-		party = append(party, s.partyMembers[i])
-	}
-	return party
-}
-
-func (s *server) syncPartyFromCombatLocked() {
-	if s.combat == nil || len(s.partyMembers) == 0 {
-		return
-	}
-	s.partyMembers[0].HP = s.combat.Player.HP
-	s.partyMembers[0].MaxHP = s.combat.Player.MaxHP
-	s.run.Player.HP = s.combat.Player.HP
-	s.run.Player.MaxHP = s.combat.Player.MaxHP
-	for i := range s.combat.Allies {
-		if i+1 >= len(s.partyMembers) {
-			break
-		}
-		s.partyMembers[i+1].HP = s.combat.Allies[i].HP
-		s.partyMembers[i+1].MaxHP = s.combat.Allies[i].MaxHP
-	}
-}
-
-func (s *server) leaderVitalsLocked() (int, int) {
-	if len(s.partyMembers) == 0 {
-		return s.run.Player.HP, s.run.Player.MaxHP
-	}
-	return s.partyMembers[0].HP, s.partyMembers[0].MaxHP
-}
-
-func (s *server) applyLeaderDeltaLocked(beforeHP, beforeMax int) {
-	if len(s.partyMembers) == 0 || s.run == nil {
-		return
-	}
-	deltaMax := s.run.Player.MaxHP - beforeMax
-	deltaHP := s.run.Player.HP - beforeHP
-
-	s.partyMembers[0].HP = s.run.Player.HP
-	s.partyMembers[0].MaxHP = s.run.Player.MaxHP
-	for i := 1; i < len(s.partyMembers); i++ {
-		s.partyMembers[i].MaxHP = max(1, s.partyMembers[i].MaxHP+deltaMax)
-		s.partyMembers[i].HP = clamp(s.partyMembers[i].HP+deltaHP, 0, s.partyMembers[i].MaxHP)
-	}
-}
-
-func (s *server) connectedPlayerIDsLocked() []string {
-	ids := []string{}
-	for _, id := range s.order {
-		player := s.players[id]
-		if player != nil && player.Connected {
-			ids = append(ids, id)
-		}
-	}
-	return ids
-}
-
-func (s *server) playerSeatIndexLocked(playerID string) int {
-	for index, id := range s.order {
-		if id == playerID {
-			if len(s.partyMembers) > 0 && index >= len(s.partyMembers) {
-				return -1
-			}
-			return index
-		}
-	}
-	return -1
-}
-
-func (s *server) allReadyLocked() bool {
-	connected := 0
-	for _, id := range s.order {
-		player := s.players[id]
-		if player == nil || !player.Connected {
-			continue
-		}
-		connected++
-		if !player.Ready {
-			return false
-		}
-	}
-	return connected > 0
-}
-
-func (s *server) canStartRunLocked() bool {
-	if !s.allReadyLocked() {
-		return false
-	}
-	return len(s.offlineSeatSummariesLocked()) == 0
-}
-
-func (s *server) dropOfflineSeatLocked(seat int) error {
-	if seat <= 0 || seat > len(s.order) {
-		return fmt.Errorf("invalid seat %d", seat)
-	}
-	id := s.order[seat-1]
-	if id == s.hostID {
-		return fmt.Errorf("cannot drop the host seat")
-	}
-	player := s.players[id]
-	if player == nil {
-		return fmt.Errorf("seat %d is empty", seat)
-	}
-	if player.Connected {
-		return fmt.Errorf("seat %d is still connected", seat)
-	}
-	delete(s.players, id)
-	delete(s.clients, id)
-	s.order = append(s.order[:seat-1], s.order[seat:]...)
-	s.appendRoomLogLocked(fmt.Sprintf("Dropped offline seat %d (%s).", seat, player.Name))
-	if len(s.offlineSeatSummariesLocked()) == 0 {
-		s.restoredFromSave = false
-	}
-	return nil
-}
-
-func (s *server) dropAllOfflineSeatsLocked() int {
-	dropped := 0
-	for seat := len(s.order); seat >= 1; seat-- {
-		id := s.order[seat-1]
-		if id == s.hostID {
-			continue
-		}
-		player := s.players[id]
-		if player == nil || player.Connected {
-			continue
-		}
-		if err := s.dropOfflineSeatLocked(seat); err == nil {
-			dropped++
-		}
-	}
-	return dropped
-}
-
-func (s *server) setClientNoticeLocked(id, notice string) {
-	if notice == "" {
-		return
-	}
-	if client := s.clients[id]; client != nil {
-		client.notice = notice
-	}
-}
-
-func (s *server) setClientResumeLocked(id string, lines []string) {
-	if len(lines) == 0 {
-		return
-	}
-	if client := s.clients[id]; client != nil {
-		client.resume = append([]string{}, lines...)
-	}
-}
-
-func (s *server) announcePhaseLocked(reason string) {
-	title := phaseDisplayName(s.phase)
-	for _, id := range s.order {
-		player := s.players[id]
-		if player == nil || !player.Connected {
-			continue
-		}
-		notice := fmt.Sprintf("Phase changed: %s.", title)
-		if reason != "" {
-			notice = fmt.Sprintf("%s %s", notice, reason)
-		}
-		s.setClientNoticeLocked(id, notice)
-		s.setClientResumeLocked(id, s.phaseAnnouncementLinesLocked(id))
-	}
-}
-
-func (s *server) phaseAnnouncementLinesLocked(selfID string) []string {
-	lines := []string{}
-	lines = append(lines, s.phaseResumeLinesLocked()...)
-	if control := s.controlLabelLocked(selfID); control != "" {
-		lines = append(lines, "Control: "+control)
-	}
-	if note := s.roleNoteLocked(selfID); note != "" {
-		lines = append(lines, note)
-	}
-	examples := s.exampleCommandsLocked(selfID)
-	if len(examples) > 0 {
-		lines = append(lines, "Suggested next: "+strings.Join(examples, " | "))
-	} else {
-		lines = append(lines, "Suggested next: wait for the next room update, or use `help`, `status`, or `log` locally.")
-	}
-	return compactStrings(lines)
-}
-
-func (s *server) consumeClientNoticeLocked(id string) string {
-	client := s.clients[id]
-	if client == nil || client.notice == "" {
-		return ""
-	}
-	notice := client.notice
-	client.notice = ""
-	return notice
-}
-
-func (s *server) consumeClientResumeLocked(id string) []string {
-	client := s.clients[id]
-	if client == nil || len(client.resume) == 0 {
-		return nil
-	}
-	lines := append([]string{}, client.resume...)
-	client.resume = nil
-	return lines
-}
-
-func (s *server) joinNoticeLocked(id string) string {
-	player := s.players[id]
-	if player == nil {
-		return ""
-	}
-	return fmt.Sprintf("Joined seat %d as %s. Current phase: %s. Local commands: help, status, log, quit.", s.playerSeatIndexLocked(id)+1, player.ClassID, phaseDisplayName(s.phase))
-}
-
-func (s *server) reconnectNoticeLocked(id string) string {
-	player := s.players[id]
-	if player == nil {
-		return ""
-	}
-	seat := s.playerSeatIndexLocked(id) + 1
-	if s.restoredFromSave && id == s.hostID {
-		return fmt.Sprintf("Saved room restored. You reclaimed seat %d and resumed %s. Ask players to rejoin with the same names.", seat, phaseDisplayName(s.phase))
-	}
-	return fmt.Sprintf("Rejoined seat %d during %s. Your saved class is %s.", seat, phaseDisplayName(s.phase), player.ClassID)
-}
-
-func (s *server) reconnectResumeLocked(id string) []string {
-	player := s.players[id]
-	if player == nil {
-		return nil
-	}
-	lines := []string{
-		fmt.Sprintf("Recovered phase: %s", phaseDisplayName(s.phase)),
-		fmt.Sprintf("You reclaimed seat %d as %s.", s.playerSeatIndexLocked(id)+1, player.ClassID),
-	}
-	lines = append(lines, s.phaseResumeLinesLocked()...)
-	if len(s.offlineSeatSummariesLocked()) > 0 {
-		lines = append(lines, fmt.Sprintf("Offline reserved seats remaining: %d.", len(s.offlineSeatSummariesLocked())))
-	}
-	return lines
-}
-
-func (s *server) offlineSeatSummariesLocked() []string {
-	seats := []string{}
-	for index, id := range s.order {
-		player := s.players[id]
-		if player == nil || player.Connected {
-			continue
-		}
-		seats = append(seats, formatSeatPlayer(index+1, player.Name, player.ClassID))
-	}
-	return seats
-}
-
-func (s *server) waitingOnLocked() []string {
-	waiting := []string{}
-	switch s.phase {
-	case phaseLobby:
-		for index, id := range s.order {
-			player := s.players[id]
-			if player == nil || !player.Connected || player.Ready {
-				continue
-			}
-			waiting = append(waiting, formatSeatPlayer(index+1, player.Name, player.ClassID))
-		}
-	case phaseCombat:
-		if s.combat == nil {
-			return nil
-		}
-		for index := 0; index < len(s.combat.Coop.EndTurnVotes) && index < len(s.order); index++ {
-			player := s.players[s.order[index]]
-			if player == nil || !player.Connected || s.combat.Coop.EndTurnVotes[index] {
-				continue
-			}
-			waiting = append(waiting, formatSeatPlayer(index+1, player.Name, player.ClassID))
-		}
-	}
-	return waiting
-}
-
-func (s *server) seatStatusLocked(selfID string) []string {
-	statuses := make([]string, 0, len(s.order))
-	for index, id := range s.order {
-		player := s.players[id]
-		if player == nil {
-			continue
-		}
-		label := formatSeatPlayer(index+1, player.Name, player.ClassID)
-		if id == s.hostID {
-			label += " [host]"
-		}
-		if id == selfID {
-			label += " [you]"
-		}
-		statuses = append(statuses, fmt.Sprintf("%s: %s", label, s.seatPhaseStateLocked(index, player)))
-	}
-	return statuses
-}
-
-func (s *server) seatPhaseStateLocked(index int, player *roomPlayer) string {
-	if player == nil {
-		return "empty"
-	}
-	if !player.Connected {
-		if s.phase == phaseCombat {
-			return "offline-auto-ready"
-		}
-		return "offline-reserved"
-	}
-	if s.hostTransfer != nil {
-		switch player.ID {
-		case s.hostTransfer.FromID:
-			return "acting: transfer pending"
-		case s.hostTransfer.ToID:
-			return "acting: confirm host transfer"
-		}
-	}
-	switch s.phase {
-	case phaseLobby:
-		if player.Ready {
-			if player.ID == s.hostID {
-				return "ready-host"
-			}
-			return "ready"
-		}
-		if player.ID == s.hostID {
-			return "acting: room setup"
-		}
-		return "waiting: ready up"
-	case phaseMap:
-		if player.ID == s.hostID {
-			return "acting: choose route"
-		}
-		return "waiting: host route"
-	case phaseCombat:
-		if s.combat == nil || index >= len(s.combat.Coop.EndTurnVotes) {
-			return "acting"
-		}
-		if s.combat.Coop.EndTurnVotes[index] {
-			return "ready"
-		}
-		return "acting"
-	case phaseReward:
-		if player.ID == s.hostID {
-			return "acting: resolve reward"
-		}
-		return "waiting: host reward"
-	case phaseEvent:
-		if player.ID == s.hostID {
-			return "acting: resolve event"
-		}
-		return "waiting: host event"
-	case phaseShop:
-		if player.ID == s.hostID {
-			return "acting: shop decision"
-		}
-		return "waiting: host shop"
-	case phaseRest:
-		if player.ID == s.hostID {
-			return "acting: campfire choice"
-		}
-		return "waiting: host campfire"
-	case phaseEquipment:
-		if player.ID == s.hostID {
-			return "acting: equipment choice"
-		}
-		return "waiting: host equipment"
-	case phaseDeckAction:
-		if player.ID == s.hostID {
-			return "acting: deck action"
-		}
-		return "waiting: host deck action"
-	case phaseSummary:
-		if player.ID == s.hostID {
-			return "acting: next run or abandon"
-		}
-		return "waiting: host summary"
-	default:
-		return "waiting"
-	}
-}
-
-func (s *server) recoveryActionsLocked(selfID string) []string {
-	if selfID != s.hostID || s.phase != phaseLobby {
-		return nil
-	}
-	actions := []string{}
-	offline := s.offlineSeatSummariesLocked()
-	if len(offline) == 0 {
-		return actions
-	}
-	for index, id := range s.order {
-		player := s.players[id]
-		if player == nil || player.Connected {
-			continue
-		}
-		actions = append(actions, fmt.Sprintf("drop %d    remove %s from the reserved seat list", index+1, player.Name))
-	}
-	if len(actions) > 1 {
-		actions = append(actions, "drop all   remove every offline reserved seat")
-	}
-	return actions
-}
-
-func (s *server) reconnectCommandsLocked(selfID string) []string {
-	if selfID != s.hostID {
-		return nil
-	}
-	commands := []string{}
-	for index, id := range s.order {
-		player := s.players[id]
-		if player == nil || player.Connected {
-			continue
-		}
-		commands = append(commands, fmt.Sprintf("Seat %d %s: go run ./cmd/cmdcards join --addr %s --name %s --class %s",
-			index+1, player.Name, s.roomAddr, player.Name, player.ClassID))
-	}
-	return commands
-}
-
-func (s *server) resumeSummaryLocked(selfID string) []string {
-	summary := []string{}
-	if !s.restoredFromSave {
-		return summary
-	}
-	summary = append(summary, fmt.Sprintf("Recovered phase: %s", phaseDisplayName(s.phase)))
-	summary = append(summary, s.phaseResumeLinesLocked()...)
-	if len(s.offlineSeatSummariesLocked()) > 0 {
-		summary = append(summary, fmt.Sprintf("Offline reserved seats: %d.", len(s.offlineSeatSummariesLocked())))
-	}
-	if len(s.waitingOnLocked()) > 0 {
-		summary = append(summary, fmt.Sprintf("Currently waiting on %d connected seat(s).", len(s.waitingOnLocked())))
-	}
-	return summary
-}
-
-func (s *server) phaseResumeLinesLocked() []string {
-	switch s.phase {
-	case phaseLobby:
-		return []string{fmt.Sprintf("Mode %s, seed %d.", s.mode, s.seed)}
-	case phaseMap:
-		if s.run != nil {
-			return []string{fmt.Sprintf("Act %d, next floor %d, gold %d.", s.run.Act, s.run.CurrentFloor+1, s.run.Player.Gold)}
-		}
-	case phaseCombat:
-		if s.combat != nil {
-			return []string{fmt.Sprintf("Combat turn %d, energy %d/%d.", s.combat.Turn, s.combat.Player.Energy, s.combat.Player.MaxEnergy)}
-		}
-	case phaseReward:
-		return []string{"Reward choice is still pending."}
-	case phaseEvent:
-		return []string{"Event choice is still pending."}
-	case phaseShop:
-		if s.run != nil {
-			return []string{fmt.Sprintf("Shop is open with %d gold available.", s.run.Player.Gold)}
-		}
-	case phaseRest:
-		return []string{"Campfire action is still pending."}
-	case phaseEquipment:
-		return []string{"Equipment replacement prompt is still pending."}
-	case phaseDeckAction:
-		return []string{"Deck action prompt is still pending."}
-	case phaseSummary:
-		return []string{"Run summary is waiting for the host's next decision."}
-	}
-	return nil
-}
-
-func (s *server) firstConnectedHostTransferSeatLocked() int {
-	if s.connectedHostTransferSeatCountLocked() == 0 {
-		return 0
-	}
-	for index, id := range s.order {
-		if id == s.hostID {
-			continue
-		}
-		player := s.players[id]
-		if player == nil || !player.Connected {
-			continue
-		}
-		return index + 1
-	}
-	return 0
-}
-
-func (s *server) connectedHostTransferSeatCountLocked() int {
-	count := 0
-	for _, id := range s.order {
-		if id == s.hostID {
-			continue
-		}
-		player := s.players[id]
-		if player == nil || !player.Connected {
-			continue
-		}
-		count++
-	}
-	return count
-}
-
-func (s *server) chatUnreadLocked(id string) int {
-	client := s.clients[id]
-	if client == nil {
-		return 0
-	}
-	if client.chatSeen >= len(s.chatLog) {
-		return 0
-	}
-	return len(s.chatLog) - client.chatSeen
-}
-
-func (s *server) transferNoteLocked(selfID string) string {
-	if s.hostTransfer == nil {
-		return ""
-	}
-	fromSeat := s.playerSeatIndexLocked(s.hostTransfer.FromID) + 1
-	toSeat := s.playerSeatIndexLocked(s.hostTransfer.ToID) + 1
-	fromName := s.hostTransfer.FromID
-	toName := s.hostTransfer.ToID
-	if player := s.players[s.hostTransfer.FromID]; player != nil {
-		fromName = player.Name
-	}
-	if player := s.players[s.hostTransfer.ToID]; player != nil {
-		toName = player.Name
-	}
-	switch selfID {
-	case s.hostTransfer.FromID:
-		return fmt.Sprintf("Host transfer pending: Seat %d %s -> Seat %d %s. Use cancel-host to stop it.", fromSeat, fromName, toSeat, toName)
-	case s.hostTransfer.ToID:
-		return fmt.Sprintf("Host transfer request pending from Seat %d %s. Use accept-host or deny-host.", fromSeat, fromName)
-	default:
-		return fmt.Sprintf("Host transfer pending: Seat %d %s -> Seat %d %s.", fromSeat, fromName, toSeat, toName)
-	}
-}
-
-func (s *server) appendTransferCommandsLocked(selfID string, commands []string) []string {
-	if s.hostTransfer != nil {
-		switch selfID {
-		case s.hostTransfer.FromID:
-			return append(commands, "cancel-host")
-		case s.hostTransfer.ToID:
-			return append(commands, "accept-host", "deny-host")
-		default:
-			return commands
-		}
-	}
-	if selfID == s.hostID && s.connectedHostTransferSeatCountLocked() > 0 {
-		return append(commands, "host <seat>")
-	}
-	return commands
-}
-
-func (s *server) appendTransferExamplesLocked(selfID string, examples []string) []string {
-	if s.hostTransfer != nil {
-		switch selfID {
-		case s.hostTransfer.FromID:
-			return append(examples, "cancel-host")
-		case s.hostTransfer.ToID:
-			return append(examples, "accept-host", "deny-host")
-		default:
-			return examples
-		}
-	}
-	if selfID == s.hostID {
-		if seat := s.firstConnectedHostTransferSeatLocked(); seat > 0 {
-			return append(examples, fmt.Sprintf("host %d", seat))
-		}
-	}
-	return examples
-}
-
-func (s *server) commandHintsLocked(selfID string) []string {
-	isHost := selfID == s.hostID
-	base := []string{"chat <text>", "quit"}
-	switch s.phase {
-	case phaseLobby:
-		if isHost {
-			base = []string{
-				"class <id>",
-				"ready",
-				"mode <story|endless>",
-				"seed <n>",
-				"start",
-				"drop <seat|all>",
-				"chat <text>",
-				"abandon",
-				"quit",
-			}
-		} else {
-			base = []string{"class <id>", "ready", "chat <text>", "quit"}
-		}
-	case phaseMap:
-		if isHost {
-			base = []string{"node <index>", "chat <text>", "quit"}
-		}
-	case phaseCombat:
-		base = []string{"play <card#> [enemy|ally <target#>]", "potion <slot#> [enemy|ally <target#>]", "end", "chat <text>", "quit"}
-	case phaseReward:
-		if isHost {
-			base = []string{"take <card#>", "skip", "chat <text>", "quit"}
-		}
-	case phaseEvent:
-		if isHost {
-			base = []string{"choose <index>", "chat <text>", "quit"}
-		}
-	case phaseShop:
-		if isHost {
-			base = []string{"buy <index>", "leave", "chat <text>", "quit"}
-		}
-	case phaseRest:
-		if isHost {
-			base = []string{"heal", "upgrade", "chat <text>", "quit"}
-		}
-	case phaseEquipment:
-		if isHost {
-			base = []string{"take", "skip", "chat <text>", "quit"}
-		}
-	case phaseDeckAction:
-		if isHost {
-			base = []string{"choose <index>", "back", "chat <text>", "quit"}
-		}
-	case phaseSummary:
-		if isHost {
-			base = []string{"new", "abandon", "chat <text>", "quit"}
-		}
-	}
-	return s.appendTransferCommandsLocked(selfID, base)
-}
-
-func (s *server) roleNoteLocked(selfID string) string {
-	if s.hostTransfer != nil {
-		switch selfID {
-		case s.hostTransfer.FromID:
-			return "Host transfer is pending. Wait for the requested seat to accept, or use cancel-host."
-		case s.hostTransfer.ToID:
-			return "You have a pending host transfer request. Accept to take room control, or deny to keep the current host."
-		}
-	}
-	isHost := selfID == s.hostID
-	switch s.phase {
-	case phaseLobby:
-		if isHost {
-			return "You control room settings, can start the next run, and can clear offline reserved seats."
-		}
-		return "Pick a class, toggle ready, and wait for the host to launch the room."
-	case phaseMap:
-		if isHost {
-			return "You choose the next shared node for the whole room."
-		}
-		return "The host chooses the route. You stay synced to the shared map."
-	case phaseCombat:
-		return "Every connected seat can play cards and vote end turn. The enemy turn starts only after all connected seats vote."
-	case phaseReward:
-		if isHost {
-			return "You resolve the shared reward for the room."
-		}
-		return "You are waiting for the host to resolve the shared reward."
-	case phaseEvent:
-		if isHost {
-			return "You choose the event outcome for the room."
-		}
-		return "You are waiting for the host to choose the event outcome."
-	case phaseShop:
-		if isHost {
-			return "You control shop purchases and when the room leaves the shop."
-		}
-		return "You are waiting for the host to finish shopping."
-	case phaseRest:
-		if isHost {
-			return "You choose the campfire action for the room."
-		}
-		return "You are waiting for the host to resolve the campfire."
-	case phaseEquipment:
-		if isHost {
-			return "You decide whether the offered equipment replaces the current slot item."
-		}
-		return "You are waiting for the host to accept or skip the equipment offer."
-	case phaseDeckAction:
-		if isHost {
-			return "You resolve the shared deck action."
-		}
-		return "You are waiting for the host to resolve the shared deck action."
-	case phaseSummary:
-		if isHost {
-			return "You can start the next run or abandon the room save from here."
-		}
-		return "You are waiting for the host to continue or close the room."
-	default:
-		return ""
-	}
-}
-
-func (s *server) controlLabelLocked(selfID string) string {
-	isHost := selfID == s.hostID
-	switch s.phase {
-	case phaseLobby:
-		if isHost {
-			return "Host room setup"
-		}
-		return "Seat setup"
-	case phaseMap:
-		if isHost {
-			return "Host route selection"
-		}
-		return "Waiting for host route selection"
-	case phaseCombat:
-		return "Shared combat control"
-	case phaseReward, phaseEvent, phaseShop, phaseRest, phaseEquipment, phaseDeckAction, phaseSummary:
-		if isHost {
-			return "Host-only room decision"
-		}
-		return "Waiting for host decision"
-	default:
-		return ""
-	}
-}
-
-func (s *server) exampleCommandsLocked(selfID string) []string {
-	isHost := selfID == s.hostID
-	player := s.players[selfID]
-	if s.hostTransfer != nil {
-		switch selfID {
-		case s.hostTransfer.FromID:
-			return []string{"chat host transfer pending", "cancel-host"}
-		case s.hostTransfer.ToID:
-			return []string{"accept-host", "deny-host", "chat taking host"}
-		default:
-			return []string{"chat waiting on host transfer"}
-		}
-	}
-	switch s.phase {
-	case phaseLobby:
-		examples := []string{}
-		classID := ""
-		if player != nil {
-			classID = player.ClassID
-		}
-		if classID == "" {
-			classes := classIDs(s.lib)
-			if len(classes) > 0 {
-				classID = classes[0]
-			}
-		}
-		if classID != "" {
-			examples = append(examples, fmt.Sprintf("class %s", classID))
-		}
-		examples = append(examples, "ready")
-		if isHost {
-			examples = append(examples, fmt.Sprintf("seed %d", s.seed))
-			examples = append(examples, fmt.Sprintf("mode %s", s.mode))
-			for seat, id := range s.order {
-				offlinePlayer := s.players[id]
-				if offlinePlayer == nil || offlinePlayer.Connected {
-					continue
-				}
-				examples = append(examples, fmt.Sprintf("drop %d", seat+1))
-				break
-			}
-			if len(s.offlineSeatSummariesLocked()) > 1 {
-				examples = append(examples, "drop all")
-			}
-			if s.canStartRunLocked() {
-				examples = append(examples, "start")
-			}
-		}
-		examples = append(examples, "chat ready when you are")
-		return compactStrings(s.appendTransferExamplesLocked(selfID, examples))
-	case phaseMap:
-		if !isHost || s.run == nil {
-			return []string{"chat waiting on route"}
-		}
-		reachable := engine.ReachableNodes(s.run)
-		if len(reachable) == 0 {
-			return s.appendTransferExamplesLocked(selfID, []string{"chat route?"})
-		}
-		examples := []string{"node 1", "chat taking node 1"}
-		return s.appendTransferExamplesLocked(selfID, examples)
-	case phaseCombat:
-		if s.run == nil || s.combat == nil {
-			return []string{"chat ready to end", "end"}
-		}
-		examples := []string{}
-		view := buildCombatSnapshot(s.lib, s.run, s.combat, s.order, s.players)
-		if view != nil && len(view.Hand) > 0 {
-			examples = append(examples, combatCommandExample(view.Hand[0]))
-		}
-		if len(s.run.Player.Potions) > 0 {
-			examples = append(examples, "potion 1")
-		}
-		examples = append(examples, "chat focus left enemy")
-		examples = append(examples, "end")
-		return compactStrings(s.appendTransferExamplesLocked(selfID, examples))
-	case phaseReward:
-		if !isHost {
-			return []string{"chat take the first card"}
-		}
-		if s.reward != nil && len(s.reward.CardChoices) > 0 {
-			examples := []string{"take 1", "skip", "chat taking card 1"}
-			return s.appendTransferExamplesLocked(selfID, examples)
-		}
-		examples := []string{"skip", "chat skipping reward"}
-		return s.appendTransferExamplesLocked(selfID, examples)
-	case phaseEvent:
-		if !isHost || s.eventState == nil || len(s.eventState.Event.Choices) == 0 {
-			return []string{"chat choose 1 if you agree"}
-		}
-		examples := []string{"choose 1", "chat choosing option 1"}
-		return s.appendTransferExamplesLocked(selfID, examples)
-	case phaseShop:
-		if !isHost || s.shopState == nil {
-			return []string{"chat want anything from shop?"}
-		}
-		if len(s.shopState.Offers) > 0 {
-			examples := []string{"buy 1", "leave", "chat buying offer 1"}
-			return s.appendTransferExamplesLocked(selfID, examples)
-		}
-		examples := []string{"leave", "chat leaving shop"}
-		return s.appendTransferExamplesLocked(selfID, examples)
-	case phaseRest:
-		if !isHost {
-			return []string{"chat heal or upgrade?"}
-		}
-		examples := []string{"heal", "upgrade", "chat upgrading at campfire"}
-		return s.appendTransferExamplesLocked(selfID, examples)
-	case phaseEquipment:
-		if !isHost {
-			return []string{"chat take or skip?"}
-		}
-		examples := []string{"take", "skip", "chat equipping this"}
-		return s.appendTransferExamplesLocked(selfID, examples)
-	case phaseDeckAction:
-		if !isHost || s.run == nil {
-			return []string{"chat choose 1?"}
-		}
-		if len(s.deckActionIndexes) > 0 {
-			examples := []string{"choose 1", "back", "chat picking card 1"}
-			return s.appendTransferExamplesLocked(selfID, examples)
-		}
-		examples := []string{"back", "chat backing out"}
-		return s.appendTransferExamplesLocked(selfID, examples)
-	case phaseSummary:
-		if !isHost {
-			return []string{"chat gg"}
-		}
-		examples := []string{"new", "abandon", "chat reset?"}
-		return s.appendTransferExamplesLocked(selfID, examples)
-	default:
-		return nil
-	}
-}
-
-func (s *server) phaseHintLocked(selfID string, waitingOn []string) string {
-	isHost := selfID == s.hostID
-	offline := s.offlineSeatSummariesLocked()
-	parts := []string{}
-	if transfer := s.transferNoteLocked(selfID); transfer != "" {
-		parts = append(parts, transfer)
-	}
-	if s.restoredFromSave && len(offline) > 0 {
-		if isHost {
-			parts = append(parts, "Recovered room loaded from disk. Wait for offline seats to reconnect with the same names, or keep playing with reserved seats offline.")
-		} else {
-			parts = append(parts, "This room was restored from disk. Offline seats can reclaim their spots by reconnecting with the same names.")
-		}
-	}
-	switch s.phase {
-	case phaseLobby:
-		if len(waitingOn) > 0 {
-			parts = append(parts, "Waiting for connected players to ready.")
-		}
-		if len(offline) > 0 {
-			if isHost {
-				parts = append(parts, "Offline seats block a new run. Ask them to reconnect with the same names or use `drop <seat>` in the lobby.")
-			} else {
-				parts = append(parts, "Offline seats must reconnect before the host can start a new run.")
-			}
-		} else if isHost {
-			parts = append(parts, "Everyone online is ready. Start when you want.")
-		} else {
-			parts = append(parts, "Choose a class and toggle ready.")
-		}
-	case phaseMap:
-		if isHost {
-			parts = append(parts, "Choose the next node.")
-		} else {
-			parts = append(parts, "Waiting for the host to choose the next node.")
-		}
-	case phaseCombat:
-		if len(waitingOn) > 0 {
-			parts = append(parts, "Play cards, then end turn. Enemy turn waits for every connected seat to vote.")
-		} else {
-			parts = append(parts, "All connected seats are ready to end the turn.")
-		}
-		if len(offline) > 0 {
-			parts = append(parts, "Offline seats stay reserved and count as auto-ready for end-turn voting.")
-		}
-	case phaseReward:
-		parts = append(parts, phaseHostWaitHint(isHost, "Resolve the reward choice."))
-	case phaseEvent:
-		parts = append(parts, phaseHostWaitHint(isHost, "Resolve the event choice."))
-	case phaseShop:
-		parts = append(parts, phaseHostWaitHint(isHost, "Host can buy or leave the shop."))
-	case phaseRest:
-		parts = append(parts, phaseHostWaitHint(isHost, "Host chooses heal or upgrade."))
-	case phaseEquipment:
-		parts = append(parts, phaseHostWaitHint(isHost, "Host confirms whether to equip the new item."))
-	case phaseDeckAction:
-		parts = append(parts, phaseHostWaitHint(isHost, "Host resolves the deck action selection."))
-	case phaseSummary:
-		parts = append(parts, phaseHostWaitHint(isHost, "Host can start a new run or abandon the room."))
-	}
-	return strings.Join(compactStrings(parts), " ")
-}
-
-func phaseHostWaitHint(isHost bool, hostText string) string {
-	if isHost {
-		return hostText
-	}
-	return "Waiting for the host."
-}
-
-func phaseDisplayName(phase string) string {
-	switch phase {
-	case phaseLobby:
-		return "LAN Lobby"
-	case phaseMap:
-		return "Shared Map"
-	case phaseCombat:
-		return "Shared Combat"
-	case phaseReward:
-		return "Reward"
-	case phaseEvent:
-		return "Event"
-	case phaseShop:
-		return "Shop"
-	case phaseRest:
-		return "Campfire"
-	case phaseEquipment:
-		return "Equipment Choice"
-	case phaseDeckAction:
-		return "Deck Action"
-	case phaseSummary:
-		return "Run Summary"
-	default:
-		return phase
-	}
-}
-
-func buildVoteStatus(order []string, players map[string]*roomPlayer, votes []bool) []string {
-	status := make([]string, 0, len(votes))
-	for index := 0; index < len(votes) && index < len(order); index++ {
-		player := players[order[index]]
-		if player == nil {
-			continue
-		}
-		state := "waiting"
-		if !player.Connected {
-			state = "offline-auto-ready"
-		} else if votes[index] {
-			state = "ready"
-		}
-		status = append(status, fmt.Sprintf("%s: %s", formatSeatPlayer(index+1, player.Name, player.ClassID), state))
-	}
-	return status
-}
-
-func formatSeatPlayer(seat int, name, classID string) string {
-	if classID == "" {
-		return fmt.Sprintf("Seat %d %s", seat, name)
-	}
-	return fmt.Sprintf("Seat %d %s [%s]", seat, name, classID)
-}
-
-func compactStrings(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		out = append(out, value)
-	}
-	return out
-}
-
-func combatCommandExample(card cardSnapshot) string {
-	hint := strings.ToLower(card.TargetHint)
-	switch {
-	case strings.Contains(hint, "single enemy"):
-		return fmt.Sprintf("play %d enemy 1", card.Index)
-	case strings.Contains(hint, "single ally"):
-		return fmt.Sprintf("play %d ally 1", card.Index)
-	default:
-		return fmt.Sprintf("play %d", card.Index)
-	}
-}
-
-func (s *server) broadcastLocked() {
-	if s.closed {
-		return
-	}
-	_ = s.persistLocked()
-	for _, id := range s.order {
-		client := s.clients[id]
-		if client == nil {
-			continue
-		}
-		_ = client.enc.Encode(message{Type: "snapshot", Snapshot: s.snapshotLocked(id)})
-	}
-}
-
-func (s *server) snapshotLocked(selfID string) *roomSnapshot {
-	players := make([]roomPlayer, 0, len(s.order))
-	for seat, id := range s.order {
-		if player := s.players[id]; player != nil {
-			players = append(players, roomPlayer{
-				ID:        player.ID,
-				Seat:      seat + 1,
-				Name:      player.Name,
-				ClassID:   player.ClassID,
-				Ready:     player.Ready,
-				Connected: player.Connected,
-			})
-		}
-	}
-	waitingOn := s.waitingOnLocked()
-	snap := &roomSnapshot{
-		SelfID:           selfID,
-		Seat:             s.playerSeatIndexLocked(selfID) + 1,
-		HostID:           s.hostID,
-		RoomAddr:         s.roomAddr,
-		Phase:            s.phase,
-		PhaseTitle:       phaseDisplayName(s.phase),
-		PhaseHint:        s.phaseHintLocked(selfID, waitingOn),
-		ControlLabel:     s.controlLabelLocked(selfID),
-		RoleNote:         s.roleNoteLocked(selfID),
-		Banner:           s.consumeClientNoticeLocked(selfID),
-		Players:          players,
-		OfflineSeats:     s.offlineSeatSummariesLocked(),
-		WaitingOn:        waitingOn,
-		SeatStatus:       s.seatStatusLocked(selfID),
-		Recovery:         s.recoveryActionsLocked(selfID),
-		Reconnect:        s.reconnectCommandsLocked(selfID),
-		Resume:           append(s.consumeClientResumeLocked(selfID), s.resumeSummaryLocked(selfID)...),
-		Commands:         s.commandHintsLocked(selfID),
-		Examples:         s.exampleCommandsLocked(selfID),
-		CanStart:         selfID == s.hostID && s.phase == phaseLobby && s.canStartRunLocked(),
-		ChatLog:          tailStrings(s.chatLog, 10),
-		ChatUnread:       s.chatUnreadLocked(selfID),
-		ChatUnreadInView: min(s.chatUnreadLocked(selfID), len(tailStrings(s.chatLog, 10))),
-		TransferNote:     s.transferNoteLocked(selfID),
-		RoomLog:          tailStrings(s.roomLog, 12),
-	}
-
-	switch s.phase {
-	case phaseLobby:
-		snap.Lobby = &lobbySnapshot{
-			Mode:    string(s.mode),
-			Seed:    s.seed,
-			Classes: classIDs(s.lib),
-		}
-	case phaseMap:
-		snap.Map = s.buildMapSnapshotLocked()
-	case phaseCombat:
-		snap.Combat = s.buildCombatSnapshotLocked()
-	case phaseReward:
-		snap.Reward = s.buildRewardSnapshotLocked()
-	case phaseEvent:
-		snap.Event = s.buildEventSnapshotLocked()
-	case phaseShop:
-		snap.Shop = s.buildShopSnapshotLocked()
-	case phaseRest:
-		snap.Rest = s.buildRestSnapshotLocked()
-	case phaseEquipment:
-		snap.Equipment = buildEquipmentSnapshot(s.lib, s.equipOffer)
-	case phaseDeckAction:
-		snap.Deck = s.buildDeckActionSnapshotLocked()
-	case phaseSummary:
-		snap.Summary = s.buildSummarySnapshotLocked()
-	}
-	return snap
-}
-
-func (s *server) buildMapSnapshotLocked() *mapSnapshot {
-	reachable := engine.ReachableNodes(s.run)
-	nodes := make([]nodeSnapshot, 0, len(reachable))
-	for i, node := range reachable {
-		nodes = append(nodes, nodeSnapshot{
-			Index: i + 1,
-			Floor: node.Floor,
-			Kind:  string(node.Kind),
-			Label: fmt.Sprintf("A%d F%d %s", node.Act, node.Floor, engine.NodeKindName(node.Kind)),
-		})
-	}
-	return &mapSnapshot{
-		Mode:      string(s.run.Mode),
-		Act:       s.run.Act,
-		NextFloor: s.run.CurrentFloor + 1,
-		Gold:      s.run.Player.Gold,
-		Party:     partySnapshotsFromMembers(s.partyMembers),
-		Reachable: nodes,
-		History:   tailStrings(s.run.History, 8),
-	}
-}
-
-func (s *server) buildCombatSnapshotLocked() *combatSnapshot {
-	return buildCombatSnapshot(s.lib, s.run, s.combat, s.order, s.players)
-}
-
-func buildCombatSnapshot(lib *content.Library, run *engine.RunState, combat *engine.CombatState, order []string, players map[string]*roomPlayer) *combatSnapshot {
-	if run == nil || combat == nil {
-		return nil
-	}
-	party := make([]actorSnapshot, 0, 1+len(combat.Allies))
-	for i, actor := range engine.PartyMembersView(combat) {
-		party = append(party, actorSnapshot{
-			Index:     i + 1,
-			Name:      actor.Name,
-			HP:        actor.HP,
-			MaxHP:     actor.MaxHP,
-			Energy:    actor.Energy,
-			MaxEnergy: actor.MaxEnergy,
-			Block:     actor.Block,
-			Status:    engine.DescribeStatuses(actor.Statuses),
-		})
-	}
-	enemies := make([]enemySnapshot, 0, len(combat.Enemies))
-	for i, enemy := range combat.Enemies {
-		enemies = append(enemies, enemySnapshot{
-			Index:  i + 1,
-			Name:   enemy.Name,
-			HP:     enemy.HP,
-			MaxHP:  enemy.MaxHP,
-			Block:  enemy.Block,
-			Status: engine.DescribeStatuses(enemy.Statuses),
-			Intent: engine.DescribeIntent(enemy.CurrentIntent),
-		})
-	}
-	hand := make([]cardSnapshot, 0, len(combat.Hand))
-	for i, card := range combat.Hand {
-		def := lib.Cards[card.ID]
-		hand = append(hand, cardSnapshot{
-			Index:      i + 1,
-			Name:       engine.CardStateName(lib, card.ID, card.Upgraded),
-			Cost:       def.Cost,
-			Summary:    engine.CardStateSummary(lib, card.ID, card.Upgraded),
-			TargetHint: describeTargetKind(engine.CardTargetKindForCard(lib, card)),
-			Badges:     flagBadges(def.Flags),
-		})
-	}
-	potions := make([]string, 0, len(run.Player.Potions))
-	for i, potionID := range run.Player.Potions {
-		if potion, ok := lib.Potions[potionID]; ok {
-			potions = append(potions, fmt.Sprintf("%d. %s | %s", i+1, potion.Name, potion.Description))
-		}
-	}
-	logs := []string{}
-	for _, entry := range tailCombatLogs(combat.Log, 10) {
-		logs = append(logs, fmt.Sprintf("T%d %s", entry.Turn, entry.Text))
-	}
-	voteStatus := buildVoteStatus(order, players, combat.Coop.EndTurnVotes)
-	highlights := []string{}
-	if coopCards := countSnapshotsWithBadge(hand, "CO-OP"); coopCards > 0 {
-		highlights = append(highlights, fmt.Sprintf("%d co-op card(s) are currently in hand.", coopCards))
-	}
-	return &combatSnapshot{
-		Turn:         combat.Turn,
-		Energy:       combat.Player.Energy,
-		MaxEnergy:    combat.Player.MaxEnergy,
-		Party:        party,
-		Enemies:      enemies,
-		Hand:         hand,
-		Potions:      potions,
-		EndTurnVotes: append([]bool{}, combat.Coop.EndTurnVotes...),
-		VoteStatus:   voteStatus,
-		Logs:         logs,
-		Highlights:   highlights,
-	}
-}
-
-func (s *server) buildRewardSnapshotLocked() *rewardSnapshot {
-	if s.reward == nil {
-		return nil
-	}
-	cards := make([]cardSnapshot, 0, len(s.reward.CardChoices))
-	for i, card := range s.reward.CardChoices {
-		cards = append(cards, cardSnapshot{
-			Index:   i + 1,
-			Name:    card.Name,
-			Cost:    card.Cost,
-			Summary: engine.DescribeEffects(s.lib, card.Effects),
-			Badges:  flagBadges(card.Flags),
-		})
-	}
-	snap := &rewardSnapshot{
-		Gold:   s.reward.Gold,
-		Source: string(s.reward.SourceNodeKind),
-		Cards:  cards,
-	}
-	if s.reward.PotionID != "" {
-		snap.Potion = s.lib.Potions[s.reward.PotionID].Name
-	}
-	if s.reward.RelicID != "" {
-		relic := s.lib.Relics[s.reward.RelicID]
-		snap.Relic = relic.Name
-		snap.RelicBadges = flagBadges(relic.Flags)
-	}
-	if s.reward.EquipmentID != "" {
-		if offer, err := engine.BuildEquipmentOffer(s.lib, s.run.Player, s.reward.EquipmentID, "reward", 0); err == nil {
-			snap.Equipment = buildEquipmentSnapshot(s.lib, &offer)
-		}
-	}
-	if coopCards := countSnapshotsWithBadge(cards, "CO-OP"); coopCards > 0 {
-		snap.Highlights = append(snap.Highlights, fmt.Sprintf("Reward pool contains %d co-op card choice(s).", coopCards))
-	}
-	if slices.Contains(snap.RelicBadges, "CO-OP") {
-		snap.Highlights = append(snap.Highlights, "Reward relic is multiplayer-only.")
-	}
-	return snap
-}
-
-func (s *server) buildEventSnapshotLocked() *eventSnapshot {
-	if s.eventState == nil {
-		return nil
-	}
-	choices := make([]choiceSnapshot, 0, len(s.eventState.Event.Choices))
-	for i, choice := range s.eventState.Event.Choices {
-		choices = append(choices, choiceSnapshot{
-			Index:       i + 1,
-			Label:       choice.Label,
-			Description: choice.Description,
-			Badges:      eventChoiceBadges(s.lib, choice),
-		})
-	}
-	return &eventSnapshot{
-		Name:        s.eventState.Event.Name,
-		Description: s.eventState.Event.Description,
-		Badges:      flagBadges(s.eventState.Event.Flags),
-		Choices:     choices,
-		Log:         append([]string{}, s.eventState.Log...),
-		Highlights:  eventHighlights(s.eventState.Event.Flags, choices),
-	}
-}
-
-func (s *server) buildShopSnapshotLocked() *shopSnapshot {
-	if s.shopState == nil {
-		return nil
-	}
-	offers := make([]shopOfferSnapshot, 0, len(s.shopState.Offers))
-	for i, offer := range s.shopState.Offers {
-		offers = append(offers, shopOfferSnapshot{
-			Index:       i + 1,
-			Kind:        offer.Kind,
-			Category:    shopOfferCategory(offer.Kind),
-			Name:        offer.Name,
-			Description: offer.Description,
-			Price:       offer.Price,
-			Badges:      shopOfferBadges(s.lib, offer),
-		})
-	}
-	return &shopSnapshot{
-		Gold:       s.run.Player.Gold,
-		Offers:     offers,
-		Log:        append([]string{}, s.shopState.Log...),
-		Highlights: shopHighlights(offers),
-	}
-}
-
-func (s *server) buildRestSnapshotLocked() *restSnapshot {
-	return &restSnapshot{
-		Party: partySnapshotsFromMembers(s.partyMembers),
-		Log:   append([]string{}, s.restLog...),
-	}
-}
-
-func buildEquipmentSnapshot(lib *content.Library, offer *engine.EquipmentOfferState) *equipmentSnapshot {
-	if offer == nil {
-		return nil
-	}
-	candidate := lib.Equipments[offer.EquipmentID]
-	snap := &equipmentSnapshot{
-		Source:               offer.Source,
-		Slot:                 engine.EquipmentSlotName(offer.Slot),
-		CandidateName:        candidate.Name,
-		CandidateDescription: candidate.Description,
-		Price:                offer.Price,
-		CandidateScore:       offer.CandidateScore,
-		CurrentScore:         offer.CurrentScore,
-	}
-	if offer.CurrentEquipmentID != "" {
-		current := lib.Equipments[offer.CurrentEquipmentID]
-		snap.CurrentName = current.Name
-		snap.CurrentDescription = current.Description
-	}
-	return snap
-}
-
-func (s *server) buildDeckActionSnapshotLocked() *deckActionSnapshot {
-	cards := make([]cardSnapshot, 0, len(s.deckActionIndexes))
-	for i, deckIndex := range s.deckActionIndexes {
-		card := s.run.Player.Deck[deckIndex]
-		cards = append(cards, cardSnapshot{
-			Index:   i + 1,
-			Name:    engine.CardStateName(s.lib, card.CardID, card.Upgraded),
-			Summary: engine.CardStateSummary(s.lib, card.CardID, card.Upgraded),
-		})
-	}
-	return &deckActionSnapshot{
-		Mode:     s.deckActionMode,
-		Title:    s.deckActionTitle,
-		Subtitle: s.deckActionSubtitle,
-		Cards:    cards,
-	}
-}
-
-func (s *server) buildSummarySnapshotLocked() *summarySnapshot {
-	if s.run == nil {
-		return nil
-	}
-	return &summarySnapshot{
-		Result:   string(s.run.Status),
-		Mode:     string(s.run.Mode),
-		Act:      s.run.Act,
-		Floors:   s.run.Stats.ClearedFloors,
-		Gold:     s.run.Player.Gold,
-		DeckSize: len(s.run.Player.Deck),
-		Party:    partySnapshotsFromMembers(s.partyMembers),
-		History:  tailStrings(s.run.History, 12),
-	}
 }
 
 func runClient(addr, name, classID string) error {

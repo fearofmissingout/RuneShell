@@ -160,3 +160,33 @@ func TestResolveEventDecisionCanSkipEquipment(t *testing.T) {
 		t.Fatal("expected event log output")
 	}
 }
+
+func TestResolveEventDecisionWithDeckChoiceAppliesRunAugment(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	run, err := NewRun(lib, DefaultProfile(lib), ModeStory, "vanguard", 23)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	state := EventState{Event: lib.Events["inked_vellum"]}
+	choice := lib.Events["inked_vellum"].Choices[0]
+	plan, err := EventChoiceDeckActionPlan(lib, run, choice, true)
+	if err != nil {
+		t.Fatalf("EventChoiceDeckActionPlan() error = %v", err)
+	}
+	if plan == nil {
+		t.Fatal("expected event deck action plan")
+	}
+	if err := ResolveEventDecisionWithDeckChoice(lib, run, &state, choice.ID, true, plan.Indexes[0]); err != nil {
+		t.Fatalf("ResolveEventDecisionWithDeckChoice() error = %v", err)
+	}
+	if len(run.Player.Deck[plan.Indexes[0]].Augments) != 1 {
+		t.Fatalf("expected selected card to gain augment, got %#v", run.Player.Deck[plan.Indexes[0]].Augments)
+	}
+	if !state.Done {
+		t.Fatal("expected event state to be marked done")
+	}
+}

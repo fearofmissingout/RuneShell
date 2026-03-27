@@ -144,11 +144,11 @@ func (m model) updateMultiplayerMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.index = 0
 	case key.Matches(msg, m.keys.Select):
 		switch m.multiplayerMenuItems[m.index] {
-		case "创建房间":
+		case "Create Room":
 			m.screen = screenMultiplayerCreate
 			m.index = 0
 			m.setMultiplayerCreateFocus()
-		case "加入房间":
+		case "Join Room":
 			m.screen = screenMultiplayerJoin
 			m.index = 0
 			m.setMultiplayerJoinFocus()
@@ -265,62 +265,62 @@ func (m model) updateMultiplayerJoin(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) launchMultiplayerHost() (tea.Model, tea.Cmd) {
 	name := strings.TrimSpace(m.multiplayerCreateName.Value())
 	if name == "" {
-		m.message = "请先填写你的名字，其他玩家会在房间里看到它。"
+		m.message = "Please enter your name first so other players can recognize you in the room."
 		return m, clearMessage()
 	}
 	portText := strings.TrimSpace(m.multiplayerCreatePort.Value())
 	port, err := strconv.Atoi(portText)
 	if err != nil || port < 1 || port > 65535 {
-		m.message = "端口必须是 1 到 65535 之间的数字，例如 7777。"
+		m.message = "Port must be a number between 1 and 65535, for example 7777."
 		return m, clearMessage()
 	}
 	class := m.classes[m.multiplayerCreateClass]
 	m.multiplayerConnecting = true
-	m.message = "正在创建房间并连接，请稍候..."
+	m.message = "Creating the room and connecting..."
 	return m, startHostedSessionCmd(m.lib, port, name, class.ID, m.multiplayerCreateForceNew)
 }
 
 func (m model) launchMultiplayerJoin() (tea.Model, tea.Cmd) {
 	addr := strings.TrimSpace(m.multiplayerJoinAddr.Value())
 	if addr == "" {
-		m.message = "请先填写房间地址，例如 127.0.0.1:7777。"
+		m.message = "Please enter a room address first, for example 127.0.0.1:7777."
 		return m, clearMessage()
 	}
 	name := strings.TrimSpace(m.multiplayerJoinName.Value())
 	if name == "" {
-		m.message = "请先填写你的名字，重连时也要使用同一个名字。"
+		m.message = "Please enter your name first. Use the same name again if you reconnect."
 		return m, clearMessage()
 	}
 	class := m.classes[m.multiplayerJoinClass]
 	m.multiplayerConnecting = true
-	m.message = "正在加入房间，请稍候..."
+	m.message = "Joining the room..."
 	return m, startJoinedSessionCmd(addr, name, class.ID)
 }
 
 func multiplayerCreateLines(m model) []string {
 	class := m.classes[m.multiplayerCreateClass]
-	forceNew := "是"
+	forceNew := "Yes"
 	if !m.multiplayerCreateForceNew {
-		forceNew = "否，优先恢复上次房间"
+		forceNew = "No, prefer resuming the previous room"
 	}
 	return []string{
-		fmt.Sprintf("你的名字: %s", displayInputValue(m.multiplayerCreateName)),
-		fmt.Sprintf("初始职业: %s (%s)", class.Name, class.ID),
-		fmt.Sprintf("监听端口: %s", displayInputValue(m.multiplayerCreatePort)),
-		fmt.Sprintf("强制新建房间: %s", forceNew),
-		"开始创建房间",
-		"返回上一级",
+		fmt.Sprintf("Your name: %s", displayInputValue(m.multiplayerCreateName)),
+		fmt.Sprintf("Starting class: %s (%s)", class.Name, class.ID),
+		fmt.Sprintf("Listen port: %s", displayInputValue(m.multiplayerCreatePort)),
+		fmt.Sprintf("Force new room: %s", forceNew),
+		"Create room now",
+		"Back",
 	}
 }
 
 func multiplayerJoinLines(m model) []string {
 	class := m.classes[m.multiplayerJoinClass]
 	return []string{
-		fmt.Sprintf("房间地址: %s", displayInputValue(m.multiplayerJoinAddr)),
-		fmt.Sprintf("你的名字: %s", displayInputValue(m.multiplayerJoinName)),
-		fmt.Sprintf("加入时职业: %s (%s)", class.Name, class.ID),
-		"开始加入房间",
-		"返回上一级",
+		fmt.Sprintf("Room address: %s", displayInputValue(m.multiplayerJoinAddr)),
+		fmt.Sprintf("Your name: %s", displayInputValue(m.multiplayerJoinName)),
+		fmt.Sprintf("Join as class: %s (%s)", class.Name, class.ID),
+		"Join room now",
+		"Back",
 	}
 }
 
@@ -332,25 +332,25 @@ func displayInputValue(input textinput.Model) string {
 	if input.Placeholder != "" {
 		return "<" + input.Placeholder + ">"
 	}
-	return "<未填写>"
+	return "<empty>"
 }
 
 func multiplayerCreateHelp(m model) []string {
 	return []string{
-		"第一次玩也只要按顺序看这几项：先填名字，再确认职业和端口，最后选“开始创建房间”。",
-		"创建成功后会直接进入联机房间界面。其他玩家在同一局域网里输入你的地址和端口即可加入。",
-		"如果你只是本机双开测试，端口保持 7777 即可，其他窗口直接连 127.0.0.1:7777。",
-		fmt.Sprintf("当前局域网地址参考: %s", multiplayerAddressSummary(strings.TrimSpace(m.multiplayerCreatePort.Value()))),
-		"上下移动，左右切换职业或开关；选中名字/端口时可以直接输入，Backspace 删除，Esc 返回。",
+		"Create flow is simple: enter your name, confirm class and port, then choose Create room now.",
+		"After hosting, you go straight into the multiplayer room. Other local players can join with your LAN address and port.",
+		"For local testing on one machine, keeping port 7777 is usually enough and the other window can join 127.0.0.1:7777.",
+		fmt.Sprintf("Suggested LAN address: %s", multiplayerAddressSummary(strings.TrimSpace(m.multiplayerCreatePort.Value()))),
+		"Use Up/Down to move. Left/Right changes class or toggles options. When name or port is selected, type directly and use Backspace to edit.",
 	}
 }
 
 func multiplayerJoinHelp() []string {
 	return []string{
-		"加入房间只需要三项：房间地址、你的名字、加入时职业。",
-		"房间地址通常是“房主局域网 IP:端口”，本机测试可直接填写 127.0.0.1:7777。",
-		"如果房间掉线后要重连，请继续使用同一个名字，这样系统才会把你放回原来的座位。",
-		"上下移动，左右切换职业；选中地址或名字时可以直接输入，Backspace 删除，Esc 返回。",
+		"Joining only needs three things: the room address, your name, and the class you want to bring.",
+		"The room address is usually the host LAN IP and port, for example 127.0.0.1:7777 for local testing.",
+		"If you reconnect after a disconnect, keep the same player name so the room can restore your previous seat.",
+		"Use Up/Down to move. Left/Right changes class. When address or name is selected, type directly and use Backspace to edit.",
 	}
 }
 
@@ -400,8 +400,12 @@ func (m *model) closeMultiplayerSession() {
 	m.multiplayerCombatTarget = multiplayerTargetState{}
 	m.multiplayerStructuredIndex = 0
 	m.multiplayerInspectPane = 0
+	m.multiplayerCombatTopPage = 0
+	m.multiplayerInspectLogPage = 0
 	m.multiplayerCommandInput.SetValue("")
 	m.multiplayerCommandInput.Focus()
+	m.showMapOverlay = false
+	m.showStatsOverlay = false
 }
 
 func (m model) multiplayerUsesCombatControls() bool {
@@ -464,6 +468,7 @@ func (m *model) syncMultiplayerCombatSelection() {
 		m.multiplayerCombatIndex = 0
 		m.multiplayerPotionIndex = 0
 		m.multiplayerCombatTarget = multiplayerTargetState{}
+		m.multiplayerCombatTopPage = 0
 		return
 	}
 	combat := m.multiplayerSnapshot.Combat
@@ -574,6 +579,13 @@ func (m model) multiplayerDefaultCombatTarget(kind engine.CombatTargetKind) mult
 			}
 		}
 	case engine.CombatTargetAlly:
+		if combat != nil && combat.Party != nil {
+			for _, actor := range combat.Party {
+				if actor.Index == m.multiplayerSnapshot.Seat && actor.HP > 0 {
+					return multiplayerTargetState{Kind: kind, Index: actor.Index}
+				}
+			}
+		}
 		for _, actor := range combat.Party {
 			if actor.HP > 0 {
 				return multiplayerTargetState{Kind: kind, Index: actor.Index}
@@ -672,6 +684,8 @@ func (m model) multiplayerCombatRenderState() ui.MultiplayerCombatState {
 	state.ChatFocused = m.multiplayerRoomFocus == multiplayerRoomFocusInput
 	state.SelectedIndex = m.multiplayerStructuredIndex
 	state.InspectPane = m.multiplayerInspectPane
+	state.TopPage = m.multiplayerCombatTopPage
+	state.InspectLogPage = m.multiplayerInspectLogPage
 	state.Phase = multiplayerSnapshotPhase(m.multiplayerSnapshot)
 	state.SelectionLabel = m.multiplayerStructuredSelectionLabel()
 	if m.multiplayerCombatMode == multiplayerCombatModePotion {
@@ -824,6 +838,9 @@ func (m model) sendMultiplayerCommand(cmd *netplay.Command) (tea.Model, tea.Cmd)
 	if cmd == nil {
 		return m, nil
 	}
+	if blocked, clear := m.blockRapidAction("操作过快，请稍候再提交。"); blocked {
+		return m, clear
+	}
 	if m.multiplayerSession == nil {
 		m.message = "房间连接尚未就绪，请稍后再试。"
 		return m, clearMessage()
@@ -832,6 +849,7 @@ func (m model) sendMultiplayerCommand(cmd *netplay.Command) (tea.Model, tea.Cmd)
 		m.message = err.Error()
 		return m, clearMessage()
 	}
+	m.markActionDispatched()
 	return m, nil
 }
 
@@ -868,6 +886,14 @@ func (m model) updateMultiplayerCombatControls(msg tea.KeyMsg) (tea.Model, tea.C
 		return m, nil
 	case key.Matches(msg, m.keys.Right):
 		m.cycleMultiplayerCombatTarget(1)
+		return m, nil
+	case msg.String() == "[":
+		if m.multiplayerCombatTopPage > 0 {
+			m.multiplayerCombatTopPage--
+		}
+		return m, nil
+	case msg.String() == "]":
+		m.multiplayerCombatTopPage++
 		return m, nil
 	case key.Matches(msg, m.keys.Potion):
 		if len(m.multiplayerSnapshot.Combat.Potions) == 0 {
@@ -949,12 +975,33 @@ func (m model) updateMultiplayerStructuredControls(msg tea.KeyMsg) (tea.Model, t
 }
 
 func (m model) updateMultiplayerInspectControls(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	const inspectPaneCount = 3
 	switch {
+	case msg.String() == "[":
+		if m.multiplayerCombatTopPage > 0 {
+			m.multiplayerCombatTopPage--
+		}
+	case msg.String() == "]":
+		m.multiplayerCombatTopPage++
+	case msg.String() == ",":
+		if m.multiplayerInspectPane == 3 {
+			m.multiplayerInspectLogPage++
+		}
+	case msg.String() == ".":
+		if m.multiplayerInspectPane == 3 && m.multiplayerInspectLogPage > 0 {
+			m.multiplayerInspectLogPage--
+		}
+	case msg.String() >= "1" && msg.String() <= "5":
+		m.multiplayerInspectPane = int(msg.String()[0] - '1')
+		m.multiplayerCombatTopPage = 0
+		m.multiplayerInspectLogPage = 0
 	case key.Matches(msg, m.keys.Left), key.Matches(msg, m.keys.Up):
-		m.multiplayerInspectPane = wrapIndex(m.multiplayerInspectPane-1, inspectPaneCount)
+		m.multiplayerInspectPane = wrapIndex(m.multiplayerInspectPane-1, ui.MultiplayerCombatInspectPaneCount)
+		m.multiplayerCombatTopPage = 0
+		m.multiplayerInspectLogPage = 0
 	case key.Matches(msg, m.keys.Right), key.Matches(msg, m.keys.Down):
-		m.multiplayerInspectPane = wrapIndex(m.multiplayerInspectPane+1, inspectPaneCount)
+		m.multiplayerInspectPane = wrapIndex(m.multiplayerInspectPane+1, ui.MultiplayerCombatInspectPaneCount)
+		m.multiplayerCombatTopPage = 0
+		m.multiplayerInspectLogPage = 0
 	}
 	return m, nil
 }
@@ -1013,9 +1060,9 @@ func formatMultiplayerActionLabel(snapshot *netplay.Snapshot, label string, host
 		return label
 	}
 	if isMultiplayerHost(snapshot) {
-		return "房主操作: " + label
+		return "Host only: " + label
 	}
-	return "仅房主: " + label
+	return "Host only (locked): " + label
 }
 
 func isHostOnlyMultiplayerAction(snapshot *netplay.Snapshot, command string) bool {
@@ -1059,108 +1106,108 @@ func describeMultiplayerAction(snapshot *netplay.Snapshot, command string) strin
 	phase := multiplayerSnapshotPhase(snapshot)
 	switch verb {
 	case "quit", "exit":
-		return "离开当前房间"
+		return "Leave the current room"
 	case "ready":
-		return "标记为已准备"
+		return "Mark yourself ready"
 	case "start":
-		return "开始本局冒险"
+		return "Start this run"
 	case "mode":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
 			mode := fields[1]
 			if strings.EqualFold(mode, "story") {
-				mode = "剧情"
+				mode = "Story"
 			} else if strings.EqualFold(mode, "endless") {
-				mode = "无尽"
+				mode = "Endless"
 			}
-			return fmt.Sprintf("切换房间模式为 %s", mode)
+			return fmt.Sprintf("Switch room mode to %s", mode)
 		}
-		return "切换房间模式"
+		return "Switch room mode"
 	case "seed":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return fmt.Sprintf("设置随机种子为 %s", fields[1])
+			return fmt.Sprintf("Set room seed to %s", fields[1])
 		}
-		return "设置随机种子"
+		return "Set room seed"
 	case "class":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return fmt.Sprintf("切换职业为 %s", fields[1])
+			return fmt.Sprintf("Switch class to %s", fields[1])
 		}
-		return "切换职业"
+		return "Switch class"
 	case "drop":
 		if len(fields) >= 2 && strings.EqualFold(fields[1], "all") {
-			return "清理全部离线座位"
+			return "Clear all disconnected seats"
 		}
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return fmt.Sprintf("清理离线座位 %s", fields[1])
+			return fmt.Sprintf("Clear disconnected seat %s", fields[1])
 		}
-		return "清理离线座位"
+		return "Clear disconnected seats"
 	case "chat", "say":
 		text := strings.TrimSpace(strings.TrimPrefix(command, fields[0]))
 		if text == "" || strings.Contains(text, "<") {
-			return "发送聊天消息"
+			return "Send chat message"
 		}
-		return fmt.Sprintf("发送聊天: %s", text)
+		return fmt.Sprintf("Send chat: %s", text)
 	case "node":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
 			return describeMapAction(snapshot, fields[1])
 		}
-		return "选择下一地图节点"
+		return "Choose the next map node"
 	case "play":
 		return describeCombatPlayAction(snapshot, fields)
 	case "potion":
 		return describeCombatPotionAction(snapshot, fields)
 	case "end":
-		return "结束本回合并提交投票"
+		return "End this turn and submit your vote"
 	case "take":
 		switch phase {
 		case "reward":
 			if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
 				return describeRewardTakeAction(snapshot, fields[1])
 			}
-			return "领取奖励"
+			return "Take reward"
 		case "equipment":
-			return "装备当前候选物品"
+			return "Take the candidate equipment"
 		default:
-			return "确认领取"
+			return "Confirm take"
 		}
 	case "skip":
 		switch phase {
 		case "reward":
-			return "跳过奖励"
+			return "Skip reward"
 		case "equipment":
-			return "跳过装备"
+			return "Skip equipment"
 		default:
-			return "跳过当前选择"
+			return "Skip current choice"
 		}
 	case "choose":
 		return describeChooseAction(snapshot, fields)
 	case "buy":
 		return describeShopBuyAction(snapshot, fields)
 	case "leave":
-		return "离开商店"
+		return "Leave the shop"
 	case "heal":
-		return "营火休息并恢复生命"
+		return "Rest at the campfire"
 	case "upgrade":
-		return "营火强化卡牌"
+		return "Upgrade a card at the campfire"
 	case "back":
-		return "返回上一层选择"
+		return "Return to the previous selection"
 	case "new":
-		return "开始下一局"
+		return "Start a new run"
 	case "abandon":
 		if phase == "summary" {
-			return "结束并关闭房间存档"
+			return "Close the room and end the run"
 		}
-		return "放弃当前房间"
+		return "Abandon the current room"
 	case "host":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return fmt.Sprintf("把房主权限转交给座位 %s", fields[1])
+			return fmt.Sprintf("Transfer host authority to seat %s", fields[1])
 		}
-		return "转交房主权限"
+		return "Transfer host authority"
 	case "accept-host":
-		return "接受房主权限"
+		return "Accept host authority"
 	case "deny-host":
-		return "拒绝房主权限"
+		return "Decline host authority"
 	case "cancel-host":
-		return "取消房主转交"
+		return "Cancel host transfer"
 	default:
 		return command
 	}
@@ -1200,18 +1247,18 @@ func describeMapAction(snapshot *netplay.Snapshot, indexText string) string {
 	if snapshot != nil && snapshot.Map != nil {
 		for _, node := range snapshot.Map.Reachable {
 			if fmt.Sprintf("%d", node.Index) == indexText {
-				return fmt.Sprintf("前往节点 %s: %s", indexText, node.Label)
+				return fmt.Sprintf("Go to node %s: %s", indexText, node.Label)
 			}
 		}
 	}
-	return fmt.Sprintf("前往节点 %s", indexText)
+	return fmt.Sprintf("Go to node %s", indexText)
 }
 
 func describeCombatPlayAction(snapshot *netplay.Snapshot, fields []string) string {
 	if len(fields) < 2 || isTemplateMultiplayerAction(strings.Join(fields, " ")) {
-		return "打出手牌"
+		return "Play a card"
 	}
-	cardName := fmt.Sprintf("卡牌 %s", fields[1])
+	cardName := fmt.Sprintf("Card %s", fields[1])
 	if snapshot != nil && snapshot.Combat != nil {
 		for _, card := range snapshot.Combat.Hand {
 			if fmt.Sprintf("%d", card.Index) == fields[1] {
@@ -1221,21 +1268,21 @@ func describeCombatPlayAction(snapshot *netplay.Snapshot, fields []string) strin
 		}
 	}
 	if len(fields) >= 4 {
-		return fmt.Sprintf("打出 %s -> %s", cardName, describeCombatTarget(snapshot, fields[2], fields[3]))
+		return fmt.Sprintf("Play %s -> %s", cardName, describeCombatTarget(snapshot, fields[2], fields[3]))
 	}
-	return fmt.Sprintf("打出 %s", cardName)
+	return fmt.Sprintf("Play %s", cardName)
 }
 
 func describeCombatPotionAction(snapshot *netplay.Snapshot, fields []string) string {
 	if len(fields) < 2 || isTemplateMultiplayerAction(strings.Join(fields, " ")) {
-		return "使用药水"
+		return "Use a potion"
 	}
-	potionLabel := "药水槽 " + fields[1]
+	potionLabel := "Potion slot " + fields[1]
 	if snapshot != nil && snapshot.Combat != nil {
 		if slot, err := strconv.Atoi(fields[1]); err == nil && slot >= 1 && slot <= len(snapshot.Combat.Potions) {
 			name := strings.TrimSpace(snapshot.Combat.Potions[slot-1])
 			if name != "" {
-				potionLabel = "药水「" + name + "」"
+				potionLabel = "Potion " + name
 			}
 		}
 	}
@@ -1243,7 +1290,7 @@ func describeCombatPotionAction(snapshot *netplay.Snapshot, fields []string) str
 	if len(fields) >= 4 {
 		target = " -> " + describeCombatTarget(snapshot, fields[2], fields[3])
 	}
-	return fmt.Sprintf("使用%s%s", potionLabel, target)
+	return fmt.Sprintf("Use %s%s", potionLabel, target)
 }
 
 func describeCombatTarget(snapshot *netplay.Snapshot, kind string, indexText string) string {
@@ -1252,43 +1299,43 @@ func describeCombatTarget(snapshot *netplay.Snapshot, kind string, indexText str
 		case "enemy":
 			for _, enemy := range snapshot.Combat.Enemies {
 				if fmt.Sprintf("%d", enemy.Index) == indexText {
-					return fmt.Sprintf("敌人 %s %s", indexText, enemy.Name)
+					return fmt.Sprintf("enemy %s %s", indexText, enemy.Name)
 				}
 			}
 		case "ally":
 			for _, actor := range snapshot.Combat.Party {
 				if fmt.Sprintf("%d", actor.Index) == indexText {
-					return fmt.Sprintf("队友 %s %s", indexText, actor.Name)
+					return fmt.Sprintf("ally %s %s", indexText, actor.Name)
 				}
 			}
 		}
 	}
 	if strings.EqualFold(kind, "ally") {
-		return fmt.Sprintf("队友 %s", indexText)
+		return fmt.Sprintf("ally %s", indexText)
 	}
-	return fmt.Sprintf("敌人 %s", indexText)
+	return fmt.Sprintf("enemy %s", indexText)
 }
 
 func describeRewardTakeAction(snapshot *netplay.Snapshot, indexText string) string {
 	if snapshot != nil && snapshot.Reward != nil {
 		for _, card := range snapshot.Reward.Cards {
 			if fmt.Sprintf("%d", card.Index) == indexText {
-				return fmt.Sprintf("领取奖励卡 %s", card.Name)
+				return fmt.Sprintf("Take reward card %s", card.Name)
 			}
 		}
 	}
-	return fmt.Sprintf("领取奖励 %s", indexText)
+	return fmt.Sprintf("Take reward %s", indexText)
 }
 
 func describeChooseAction(snapshot *netplay.Snapshot, fields []string) string {
 	if len(fields) < 2 || isTemplateMultiplayerAction(strings.Join(fields, " ")) {
 		switch multiplayerSnapshotPhase(snapshot) {
 		case "event":
-			return "选择事件选项"
+			return "Choose an event option"
 		case "deck_action":
-			return "选择牌组目标"
+			return "Choose a deck target"
 		default:
-			return "选择当前选项"
+			return "Choose the current option"
 		}
 	}
 	indexText := fields[1]
@@ -1297,38 +1344,38 @@ func describeChooseAction(snapshot *netplay.Snapshot, fields []string) string {
 		if snapshot != nil && snapshot.Event != nil {
 			for _, choice := range snapshot.Event.Choices {
 				if fmt.Sprintf("%d", choice.Index) == indexText {
-					return fmt.Sprintf("选择事件 %s: %s", indexText, choice.Label)
+					return fmt.Sprintf("Choose event %s: %s", indexText, choice.Label)
 				}
 			}
 		}
-		return fmt.Sprintf("选择事件选项 %s", indexText)
+		return fmt.Sprintf("Choose event option %s", indexText)
 	case "deck_action":
 		if snapshot != nil && snapshot.Deck != nil {
 			for _, card := range snapshot.Deck.Cards {
 				if fmt.Sprintf("%d", card.Index) == indexText {
-					return fmt.Sprintf("选择卡牌 %s: %s", indexText, card.Name)
+					return fmt.Sprintf("Choose card %s: %s", indexText, card.Name)
 				}
 			}
 		}
-		return fmt.Sprintf("选择卡牌 %s", indexText)
+		return fmt.Sprintf("Choose card %s", indexText)
 	default:
-		return fmt.Sprintf("选择选项 %s", indexText)
+		return fmt.Sprintf("Choose option %s", indexText)
 	}
 }
 
 func describeShopBuyAction(snapshot *netplay.Snapshot, fields []string) string {
 	if len(fields) < 2 || isTemplateMultiplayerAction(strings.Join(fields, " ")) {
-		return "购买商店物品"
+		return "Buy a shop item"
 	}
 	indexText := fields[1]
 	if snapshot != nil && snapshot.Shop != nil {
 		for _, offer := range snapshot.Shop.Offers {
 			if fmt.Sprintf("%d", offer.Index) == indexText {
-				return fmt.Sprintf("购买 %s (%d 金币)", offer.Name, offer.Price)
+				return fmt.Sprintf("Buy %s (%d gold)", offer.Name, offer.Price)
 			}
 		}
 	}
-	return fmt.Sprintf("购买商店物品 %s", indexText)
+	return fmt.Sprintf("Buy shop item %s", indexText)
 }
 
 func clampMultiplayerActionIndex(selected, length int) int {
@@ -1445,13 +1492,10 @@ func (m model) submitMultiplayerCommand(line string) (tea.Model, tea.Cmd) {
 		m.message = "已离开当前房间。"
 		return m, clearMessage()
 	}
-	if m.multiplayerSession == nil {
-		m.message = "房间连接尚未就绪，请稍后再试。"
-		return m, clearMessage()
-	}
-	if err := m.multiplayerSession.Send(cmd); err != nil {
-		m.message = err.Error()
-		return m, clearMessage()
+	next, command := m.sendMultiplayerCommand(cmd)
+	m = next.(model)
+	if command != nil {
+		return m, command
 	}
 	m.multiplayerCommandInput.SetValue("")
 	return m, nil
