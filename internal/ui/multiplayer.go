@@ -532,19 +532,34 @@ func multiplayerControlSummary(snapshot *netplay.Snapshot) string {
 
 func renderLobbyPhaseLines(theme Theme, snapshot *netplay.Snapshot, width int) []string {
 	lines := []string{}
-	logTokens := multiplayerCombatLogTokens(theme, snapshot)
 	appendWrappedLine(&lines, theme, width, "Mode: ", fmt.Sprintf("%s | Seed %d", snapshot.Lobby.Mode, snapshot.Lobby.Seed))
 	appendSectionTitle(&lines, theme, "Room Members")
 	for _, player := range snapshot.Players {
-		status := theme.Muted.Render("not ready")
+		statusLabel := "not ready"
+		statusTone := "muted"
 		if player.Ready {
-			status = theme.Good.Render("ready")
+			statusLabel = "ready"
+			statusTone = "good"
 		}
 		if !player.Connected {
-			status = theme.Bad.Render("offline")
+			statusLabel = "offline"
+			statusTone = "bad"
 		}
-		member := fmt.Sprintf("Seat %d %s [%s] %s", player.Seat, styledClassName(theme, player.Name, player.ClassID), player.ClassID, status)
-		appendWrappedLine(&lines, theme, width, "- ", applyStyledTokens(member, logTokens))
+		memberParts := []string{
+			fmt.Sprintf("Seat %d", player.Seat),
+			styledClassName(theme, player.Name, player.ClassID),
+		}
+		if strings.TrimSpace(player.ClassID) != "" {
+			memberParts = append(memberParts, multiplayerToneChip(theme, strings.ToUpper(player.ClassID), "accent"))
+		}
+		memberParts = append(memberParts, multiplayerToneChip(theme, strings.ToUpper(statusLabel), statusTone))
+		if player.ID == snapshot.HostID {
+			memberParts = append(memberParts, multiplayerToneChip(theme, "HOST", "accent"))
+		}
+		if player.ID == snapshot.SelfID {
+			memberParts = append(memberParts, multiplayerToneChip(theme, "YOU", "selected"))
+		}
+		appendWrappedLine(&lines, theme, width, "- ", strings.Join(memberParts, " "))
 	}
 	return lines
 }
@@ -564,7 +579,7 @@ func renderMapPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState Mu
 	}
 	appendSectionTitle(&lines, theme, "Reachable Nodes")
 	for i, node := range snapshot.Map.Reachable {
-		text := fmt.Sprintf("%d. %s", node.Index, node.Label)
+		text := fmt.Sprintf("%d. %s %s", node.Index, multiplayerToneChip(theme, strings.ToUpper(node.Kind), "accent"), node.Label)
 		if i == combatState.SelectedIndex {
 			text = theme.Selected.Render(text)
 		}
@@ -692,8 +707,16 @@ func renderRewardPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState
 		appendWrappedLine(&lines, theme, width, "Choice: ", combatState.SelectionLabel)
 	}
 	for i, card := range snapshot.Reward.Cards {
-		text := fmt.Sprintf("%d. %s | %s", card.Index, styledCardName(theme, card.Name, card.Kind), card.Summary)
+		text := multiplayerCardChoiceLine(theme, card.Index, card.Kind, card.Name, card.Summary, card.Badges)
 		appendSelectableBulletLine(&lines, theme, width, text, i == combatState.SelectedIndex)
+	}
+	if strings.TrimSpace(snapshot.Reward.Relic) != "" {
+		appendSectionTitle(&lines, theme, "Relic")
+		appendWrappedLine(&lines, theme, width, "- ", snapshot.Reward.Relic+" "+renderBadgeChips(theme, snapshot.Reward.RelicBadges))
+	}
+	if strings.TrimSpace(snapshot.Reward.Potion) != "" {
+		appendSectionTitle(&lines, theme, "Potion")
+		appendWrappedLine(&lines, theme, width, "- ", multiplayerToneChip(theme, "POTION", "good")+" "+snapshot.Reward.Potion)
 	}
 	return lines
 }
@@ -708,8 +731,12 @@ func renderEventPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState 
 	}
 	appendSectionTitle(&lines, theme, "Choices")
 	for i, choice := range snapshot.Event.Choices {
-		text := fmt.Sprintf("%d. %s | %s", choice.Index, theme.Accent.Render(choice.Label), choice.Description)
+		text := multiplayerChoiceLine(theme, choice.Index, theme.Accent.Render(choice.Label), choice.Description, choice.Badges)
 		appendSelectableBulletLine(&lines, theme, width, text, i == combatState.SelectedIndex)
+	}
+	if chips := renderBadgeChips(theme, snapshot.Event.Badges); chips != "" {
+		appendSectionTitle(&lines, theme, "Event Traits")
+		appendWrappedLine(&lines, theme, width, "- ", chips)
 	}
 	return lines
 }
@@ -722,7 +749,7 @@ func renderShopPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState M
 		appendWrappedLine(&lines, theme, width, "Choice: ", combatState.SelectionLabel)
 	}
 	for i, offer := range snapshot.Shop.Offers {
-		text := fmt.Sprintf("%d. %s | %d gold | %s", offer.Index, styledMultiplayerOfferName(theme, offer.Kind, offer.Category, offer.Name), offer.Price, offer.Description)
+		text := multiplayerOfferLine(theme, offer.Index, offer.Kind, offer.Category, offer.Name, offer.Price, offer.Description, offer.Badges)
 		appendSelectableBulletLine(&lines, theme, width, text, i == combatState.SelectedIndex)
 	}
 	return lines
@@ -765,7 +792,7 @@ func renderDeckPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState M
 		appendWrappedLine(&lines, theme, width, "Choice: ", combatState.SelectionLabel)
 	}
 	for i, card := range snapshot.Deck.Cards {
-		text := fmt.Sprintf("%d. %s | %s", card.Index, styledCardName(theme, card.Name, card.Kind), card.Summary)
+		text := multiplayerCardChoiceLine(theme, card.Index, card.Kind, card.Name, card.Summary, card.Badges)
 		appendSelectableBulletLine(&lines, theme, width, text, i == combatState.SelectedIndex)
 	}
 	return lines
