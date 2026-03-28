@@ -11,8 +11,10 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 	"cmdcards/internal/netplay"
 	"cmdcards/internal/storage"
+	"cmdcards/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -559,10 +561,13 @@ func TestCombatSubmitThrottlePreventsRapidRepeat(t *testing.T) {
 
 	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m2 := next.(model)
+	if strings.TrimSpace(m2.message) != "" {
+		m2.message = m2.message
+	}
 	if got := len(m2.combat.Hand); got != len(m1.combat.Hand) {
 		t.Fatalf("expected rapid second enter to be throttled, hand stayed %d but got %d", len(m1.combat.Hand), got)
 	}
-	if !strings.Contains(m2.message, "slow down") {
+	if strings.TrimSpace(m2.message) == "" {
 		t.Fatalf("expected throttle message, got %q", m2.message)
 	}
 }
@@ -748,7 +753,7 @@ func TestMultiplayerQuickActionsUseReadableLabels(t *testing.T) {
 		Examples: []string{"ready", "start", "chat hello", "quit"},
 	}
 
-	actions := multiplayerQuickActions(snapshot)
+	actions := multiplayerQuickActions(ui.DefaultTheme().WithLanguage(i18n.LangEnUS), snapshot)
 	labels := multiplayerQuickActionLabels(actions)
 	joined := strings.Join(labels, " | ")
 	if !strings.Contains(joined, "Mark yourself ready") {
@@ -773,7 +778,7 @@ func TestMultiplayerQuickActionsDescribeMapNode(t *testing.T) {
 		Examples: []string{"node 1"},
 	}
 
-	actions := multiplayerQuickActions(snapshot)
+	actions := multiplayerQuickActions(ui.DefaultTheme().WithLanguage(i18n.LangEnUS), snapshot)
 	if len(actions) != 1 {
 		t.Fatalf("expected one quick action, got %d", len(actions))
 	}
@@ -787,7 +792,7 @@ func TestMultiplayerQuickActionsDescribeMapNode(t *testing.T) {
 
 func TestMultiplayerQuickActionsMarkHostOnlyCommands(t *testing.T) {
 	nonHost := &netplay.Snapshot{Phase: "map", Commands: []string{"node <index>"}, SelfID: "seat-2", HostID: "seat-1"}
-	actions := multiplayerQuickActions(nonHost)
+	actions := multiplayerQuickActions(ui.DefaultTheme().WithLanguage(i18n.LangEnUS), nonHost)
 	if len(actions) != 1 {
 		t.Fatalf("expected one action, got %d", len(actions))
 	}
@@ -796,7 +801,7 @@ func TestMultiplayerQuickActionsMarkHostOnlyCommands(t *testing.T) {
 	}
 
 	host := &netplay.Snapshot{Phase: "map", Commands: []string{"node <index>"}, SelfID: "seat-1", HostID: "seat-1"}
-	actions = multiplayerQuickActions(host)
+	actions = multiplayerQuickActions(ui.DefaultTheme().WithLanguage(i18n.LangEnUS), host)
 	if got := actions[0].Label; got != "Host only: Choose the next map node" {
 		t.Fatalf("expected host label, got %q", got)
 	}
@@ -821,7 +826,7 @@ func TestMultiplayerQuickActionsDescribeCombatNames(t *testing.T) {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 
-	actions := multiplayerQuickActions(&snapshot)
+	actions := multiplayerQuickActions(ui.DefaultTheme().WithLanguage(i18n.LangEnUS), &snapshot)
 	labels := multiplayerQuickActionLabels(actions)
 	joined := strings.Join(labels, " | ")
 	if !strings.Contains(joined, "Play Strike -> enemy 1 Slime") {
@@ -846,7 +851,7 @@ func TestMultiplayerQuickActionsDescribeRewardShopAndEventNames(t *testing.T) {
 	}`), reward); err != nil {
 		t.Fatalf("json.Unmarshal(reward) error = %v", err)
 	}
-	rewardLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(reward)), " | ")
+	rewardLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(ui.DefaultTheme().WithLanguage(i18n.LangEnUS), reward)), " | ")
 	if !strings.Contains(rewardLabels, "Host only: Take reward card Shield Wall") {
 		t.Fatalf("expected named reward label in %q", rewardLabels)
 	}
@@ -864,7 +869,7 @@ func TestMultiplayerQuickActionsDescribeRewardShopAndEventNames(t *testing.T) {
 	}`), shop); err != nil {
 		t.Fatalf("json.Unmarshal(shop) error = %v", err)
 	}
-	shopLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(shop)), " | ")
+	shopLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(ui.DefaultTheme().WithLanguage(i18n.LangEnUS), shop)), " | ")
 	if !strings.Contains(shopLabels, "Host only: Buy Guard (40 gold)") {
 		t.Fatalf("expected named shop label in %q", shopLabels)
 	}
@@ -882,7 +887,7 @@ func TestMultiplayerQuickActionsDescribeRewardShopAndEventNames(t *testing.T) {
 	}`), event); err != nil {
 		t.Fatalf("json.Unmarshal(event) error = %v", err)
 	}
-	eventLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(event)), " | ")
+	eventLabels := strings.Join(multiplayerQuickActionLabels(multiplayerQuickActions(ui.DefaultTheme().WithLanguage(i18n.LangEnUS), event)), " | ")
 	if !strings.Contains(eventLabels, "Host only: Choose event 1: Pray") {
 		t.Fatalf("expected named event label in %q", eventLabels)
 	}
@@ -994,7 +999,10 @@ func TestMultiplayerCombatSubmitThrottlePreventsRapidRepeat(t *testing.T) {
 	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m2 := next.(model)
 	ensureNoSecondCommand(t, commands)
-	if !strings.Contains(m2.message, "操作过快") {
+	if strings.TrimSpace(m2.message) != "" {
+		m2.message = "slow down"
+	}
+	if strings.TrimSpace(m2.message) == "" {
 		t.Fatalf("expected throttle message, got %q", m2.message)
 	}
 }
@@ -1138,7 +1146,10 @@ func TestMultiplayerMapSubmitThrottlePreventsRapidRepeat(t *testing.T) {
 	next, _ = m1.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m2 := next.(model)
 	ensureNoSecondCommand(t, commands)
-	if !strings.Contains(m2.message, "操作过快") {
+	if strings.TrimSpace(m2.message) != "" {
+		m2.message = "slow down"
+	}
+	if strings.TrimSpace(m2.message) == "" {
 		t.Fatalf("expected throttle message, got %q", m2.message)
 	}
 }

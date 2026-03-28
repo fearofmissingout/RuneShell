@@ -6,6 +6,7 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -17,17 +18,25 @@ func RenderCodex(theme Theme, lib *content.Library, tab, selected, width int) st
 	detailWidth := panelContentWidth(rightWidth)
 
 	tabs := renderSimpleTabs(theme, []string{theme.Text("menu.codex"), theme.Text("codex.relics"), theme.Text("codex.equipment")}, tab)
-	items, details := codexContent(lib, tab)
+	items, details := codexContent(theme, lib, tab)
 	selected = clampSelection(selected, len(items))
 	window := listPageWindow(len(items), selected, pagedListSize)
 
-	currentTab := codexTabName(tab)
-	countSummary := fmt.Sprintf("卡牌 %d 项 | 遗物 %d 项 | 装备 %d 项", len(lib.CardList()), len(lib.RelicList()), len(lib.EquipmentList()))
-	currentSummary := fmt.Sprintf("当前分类：%s，共 %d 项 / %d 页。1/2/3 或 Tab 切换分类，←/→、PgUp/PgDn、[/] 翻页。", currentTab, len(items), window.TotalPages)
+	currentTab := codexTabName(theme, tab)
+	countSummary := theme.Textf("codex.count_summary", i18n.Args{
+		"cards":      len(lib.CardList()),
+		"relics":     len(lib.RelicList()),
+		"equipments": len(lib.EquipmentList()),
+	})
+	currentSummary := theme.Textf("codex.current_summary", i18n.Args{
+		"tab":   currentTab,
+		"count": len(items),
+		"pages": window.TotalPages,
+	})
 
 	listLines := []string{
-		theme.Accent.Render("内容列表"),
-		theme.Muted.Render(fmt.Sprintf("%s，长文本在左侧截断。", listPageSummary(len(items), selected))),
+		theme.Accent.Render(theme.Text("codex.list")),
+		theme.Muted.Render(theme.Textf("codex.list_summary", i18n.Args{"page": listPageSummary(theme, len(items), selected)})),
 		"",
 	}
 	for i := window.Start; i < window.End; i++ {
@@ -41,7 +50,7 @@ func RenderCodex(theme Theme, lib *content.Library, tab, selected, width int) st
 	listPanel := theme.PanelAlt.Width(leftWidth).Render(strings.Join(listLines, "\n"))
 
 	detailLines := []string{
-		theme.Accent.Render("详情"),
+		theme.Accent.Render(theme.Text("progression.details")),
 		"",
 	}
 	if len(items) > 0 {
@@ -70,61 +79,65 @@ func RenderCodex(theme Theme, lib *content.Library, tab, selected, width int) st
 	return strings.Join(append(header, body), "\n")
 }
 
-func codexContent(lib *content.Library, tab int) ([]string, []string) {
+func codexContent(theme Theme, lib *content.Library, tab int) ([]string, []string) {
 	switch tab % 3 {
 	case 0:
-		return codexCards(lib)
+		return codexCards(theme, lib)
 	case 1:
-		return codexRelics(lib)
+		return codexRelics(theme, lib)
 	default:
-		return codexEquipments(lib)
+		return codexEquipments(theme, lib)
 	}
 }
 
-func codexCards(lib *content.Library) ([]string, []string) {
+func codexCards(theme Theme, lib *content.Library) ([]string, []string) {
 	items := []string{}
 	details := []string{}
 	for _, card := range lib.CardList() {
-		className := "中立"
+		className := theme.Text("codex.neutral")
 		if card.ClassID != "neutral" {
 			className = lib.Classes[card.ClassID].Name
 		}
-		items = append(items, fmt.Sprintf("%s [%s | %d费]", card.Name, className, card.Cost))
+		items = append(items, theme.Textf("codex.card_item", i18n.Args{
+			"name":  card.Name,
+			"class": className,
+			"cost":  card.Cost,
+		}))
 
 		lines := []string{
-			themeLine("名称", card.Name),
-			themeLine("职业", className),
-			themeLine("稀有度", card.Rarity),
-			themeLine("费用", fmt.Sprintf("%d", card.Cost)),
+			codexThemeLine(theme, "codex.field.name", card.Name),
+			codexThemeLine(theme, "codex.field.class", className),
+			codexThemeLine(theme, "codex.field.rarity", card.Rarity),
+			codexThemeLine(theme, "codex.field.cost", fmt.Sprintf("%d", card.Cost)),
 		}
 		if len(card.Tags) > 0 {
-			lines = append(lines, themeLine("标签", strings.Join(card.Tags, ", ")))
+			lines = append(lines, codexThemeLine(theme, "codex.field.tags", strings.Join(card.Tags, ", ")))
 		}
-		lines = append(lines, "", "效果", engine.DescribeEffects(lib, card.Effects))
+		lines = append(lines, "", theme.Text("codex.effects"), engine.DescribeEffects(lib, card.Effects))
 		if len(card.UpgradeEffects) > 0 {
-			lines = append(lines, "", "升级后", engine.DescribeEffects(lib, card.UpgradeEffects))
+			lines = append(lines, "", theme.Text("codex.upgrade"), engine.DescribeEffects(lib, card.UpgradeEffects))
 		}
 		if card.Description != "" {
-			lines = append(lines, "", "说明", card.Description)
+			lines = append(lines, "", theme.Text("codex.description"), card.Description)
 		}
 		details = append(details, strings.Join(lines, "\n"))
 	}
 	return items, details
 }
 
-func codexRelics(lib *content.Library) ([]string, []string) {
+func codexRelics(theme Theme, lib *content.Library) ([]string, []string) {
 	items := []string{}
 	details := []string{}
 	for _, relic := range lib.RelicList() {
-		items = append(items, fmt.Sprintf("%s [%s]", relic.Name, relic.Rarity))
+		items = append(items, theme.Textf("codex.relic_item", i18n.Args{"name": relic.Name, "rarity": relic.Rarity}))
 		lines := []string{
-			themeLine("名称", relic.Name),
-			themeLine("稀有度", relic.Rarity),
+			codexThemeLine(theme, "codex.field.name", relic.Name),
+			codexThemeLine(theme, "codex.field.rarity", relic.Rarity),
 			"",
-			"描述",
+			theme.Text("codex.description"),
 			relic.Description,
 			"",
-			"效果",
+			theme.Text("codex.effects"),
 			engine.DescribeEffects(lib, relic.Effects),
 		}
 		details = append(details, strings.Join(lines, "\n"))
@@ -132,20 +145,24 @@ func codexRelics(lib *content.Library) ([]string, []string) {
 	return items, details
 }
 
-func codexEquipments(lib *content.Library) ([]string, []string) {
+func codexEquipments(theme Theme, lib *content.Library) ([]string, []string) {
 	items := []string{}
 	details := []string{}
 	for _, equipment := range lib.EquipmentList() {
-		items = append(items, fmt.Sprintf("%s [%s | %s]", equipment.Name, engine.EquipmentSlotName(equipment.Slot), equipment.Rarity))
+		items = append(items, theme.Textf("codex.equipment_item", i18n.Args{
+			"name":   equipment.Name,
+			"slot":   engine.EquipmentSlotName(equipment.Slot),
+			"rarity": equipment.Rarity,
+		}))
 		lines := []string{
-			themeLine("名称", equipment.Name),
-			themeLine("槽位", engine.EquipmentSlotName(equipment.Slot)),
-			themeLine("稀有度", equipment.Rarity),
+			codexThemeLine(theme, "codex.field.name", equipment.Name),
+			codexThemeLine(theme, "codex.field.slot", engine.EquipmentSlotName(equipment.Slot)),
+			codexThemeLine(theme, "codex.field.rarity", equipment.Rarity),
 			"",
-			"描述",
+			theme.Text("codex.description"),
 			equipment.Description,
 			"",
-			"效果",
+			theme.Text("codex.effects"),
 			engine.DescribeEffects(lib, equipment.Effects),
 		}
 		details = append(details, strings.Join(lines, "\n"))
@@ -153,14 +170,14 @@ func codexEquipments(lib *content.Library) ([]string, []string) {
 	return items, details
 }
 
-func codexTabName(tab int) string {
+func codexTabName(theme Theme, tab int) string {
 	switch tab % 3 {
 	case 0:
-		return "卡牌"
+		return theme.Text("codex.cards")
 	case 1:
-		return "遗物"
+		return theme.Text("codex.relics")
 	default:
-		return "装备"
+		return theme.Text("codex.equipment")
 	}
 }
 
@@ -197,6 +214,6 @@ func wrapDetailLines(block string, width int) []string {
 	return lines
 }
 
-func themeLine(label, value string) string {
-	return label + " | " + value
+func codexThemeLine(theme Theme, labelKey, value string) string {
+	return theme.Text(labelKey) + " | " + value
 }

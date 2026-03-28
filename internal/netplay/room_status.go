@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 )
 
 func (s *server) joinNoticeLocked(id string) string {
@@ -13,7 +14,7 @@ func (s *server) joinNoticeLocked(id string) string {
 	if player == nil {
 		return ""
 	}
-	return fmt.Sprintf("Joined seat %d as %s. Current phase: %s. Local commands: help, status, log, quit.", s.playerSeatIndexLocked(id)+1, player.ClassID, phaseDisplayName(s.phase))
+	return fmt.Sprintf("已加入座位 %d，职业 %s。当前阶段：%s。可用本地命令：help、status、log、quit。", s.playerSeatIndexLocked(id)+1, player.ClassID, phaseDisplayName(s.phase))
 }
 
 func (s *server) reconnectNoticeLocked(id string) string {
@@ -23,9 +24,9 @@ func (s *server) reconnectNoticeLocked(id string) string {
 	}
 	seat := s.playerSeatIndexLocked(id) + 1
 	if s.restoredFromSave && id == s.hostID {
-		return fmt.Sprintf("Saved room restored. You reclaimed seat %d and resumed %s. Ask players to rejoin with the same names.", seat, phaseDisplayName(s.phase))
+		return fmt.Sprintf("已恢复保存的房间。你重新接管了座位 %d，并回到了%s。请提醒其他玩家使用相同名字重连。", seat, phaseDisplayName(s.phase))
 	}
-	return fmt.Sprintf("Rejoined seat %d during %s. Your saved class is %s.", seat, phaseDisplayName(s.phase), player.ClassID)
+	return fmt.Sprintf("你已在%s阶段重新加入座位 %d。保存的职业是 %s。", phaseDisplayName(s.phase), seat, player.ClassID)
 }
 
 func (s *server) reconnectResumeLocked(id string) []string {
@@ -34,12 +35,12 @@ func (s *server) reconnectResumeLocked(id string) []string {
 		return nil
 	}
 	lines := []string{
-		fmt.Sprintf("Recovered phase: %s", phaseDisplayName(s.phase)),
-		fmt.Sprintf("You reclaimed seat %d as %s.", s.playerSeatIndexLocked(id)+1, player.ClassID),
+		fmt.Sprintf("已恢复阶段: %s", phaseDisplayName(s.phase)),
+		fmt.Sprintf("你重新接管了座位 %d，职业 %s。", s.playerSeatIndexLocked(id)+1, player.ClassID),
 	}
 	lines = append(lines, s.phaseResumeLinesLocked(id)...)
 	if len(s.offlineSeatSummariesLocked()) > 0 {
-		lines = append(lines, fmt.Sprintf("Offline reserved seats remaining: %d.", len(s.offlineSeatSummariesLocked())))
+		lines = append(lines, fmt.Sprintf("仍保留的离线席位: %d。", len(s.offlineSeatSummariesLocked())))
 	}
 	return lines
 }
@@ -51,12 +52,13 @@ func (s *server) offlineSeatSummariesLocked() []string {
 		if player == nil || player.Connected {
 			continue
 		}
-		seats = append(seats, formatSeatPlayer(index+1, player.Name, player.ClassID))
+		seats = append(seats, formatSeatPlayerFor(i18n.DefaultLanguage, index+1, player.Name, player.ClassID))
 	}
 	return seats
 }
 
-func (s *server) waitingOnLocked() []string {
+func (s *server) waitingOnForLocked(selfID string) []string {
+	lang := s.playerLanguageLocked(selfID)
 	waiting := []string{}
 	switch s.phase {
 	case phaseLobby:
@@ -65,7 +67,7 @@ func (s *server) waitingOnLocked() []string {
 			if player == nil || !player.Connected || player.Ready {
 				continue
 			}
-			waiting = append(waiting, formatSeatPlayer(index+1, player.Name, player.ClassID))
+			waiting = append(waiting, formatSeatPlayerFor(lang, index+1, player.Name, player.ClassID))
 		}
 	case phaseCombat:
 		if s.combat == nil {
@@ -76,7 +78,7 @@ func (s *server) waitingOnLocked() []string {
 			if player == nil || !player.Connected || s.combat.Coop.EndTurnVotes[index] {
 				continue
 			}
-			waiting = append(waiting, formatSeatPlayer(index+1, player.Name, player.ClassID))
+			waiting = append(waiting, formatSeatPlayerFor(lang, index+1, player.Name, player.ClassID))
 		}
 	case phaseMap:
 		for index, id := range s.order {
@@ -87,111 +89,117 @@ func (s *server) waitingOnLocked() []string {
 			if state := s.seatStateLocked(id); state != nil && state.MapVote > 0 {
 				continue
 			}
-			waiting = append(waiting, formatSeatPlayer(index+1, player.Name, player.ClassID))
+			waiting = append(waiting, formatSeatPlayerFor(lang, index+1, player.Name, player.ClassID))
 		}
 	}
 	return waiting
 }
 
+func (s *server) waitingOnLocked() []string {
+	return s.waitingOnForLocked("")
+}
+
 func (s *server) seatStatusLocked(selfID string) []string {
+	lang := s.playerLanguageLocked(selfID)
 	statuses := make([]string, 0, len(s.order))
 	for index, id := range s.order {
 		player := s.players[id]
 		if player == nil {
 			continue
 		}
-		label := formatSeatPlayer(index+1, player.Name, player.ClassID)
+		label := formatSeatPlayerFor(lang, index+1, player.Name, player.ClassID)
 		if id == s.hostID {
-			label += " [host]"
+			label += " " + textForLanguage(lang, "net.tag.host", nil)
 		}
 		if id == selfID {
-			label += " [you]"
+			label += " " + textForLanguage(lang, "net.tag.you", nil)
 		}
-		statuses = append(statuses, fmt.Sprintf("%s: %s", label, s.seatPhaseStateLocked(index, player)))
+		statuses = append(statuses, fmt.Sprintf("%s: %s", label, s.seatPhaseStateLocked(selfID, index, player)))
 	}
 	return statuses
 }
 
-func (s *server) seatPhaseStateLocked(index int, player *roomPlayer) string {
+func (s *server) seatPhaseStateLocked(selfID string, index int, player *roomPlayer) string {
+	lang := s.playerLanguageLocked(selfID)
 	if player == nil {
-		return "empty"
+		return textForLanguage(lang, "net.state.empty", nil)
 	}
 	if !player.Connected {
 		if s.phase == phaseCombat {
-			return "offline-auto-ready"
+			return textForLanguage(lang, "net.state.offline_auto_ready", nil)
 		}
-		return "offline-reserved"
+		return textForLanguage(lang, "net.state.offline_reserved", nil)
 	}
 	if s.hostTransfer != nil {
 		switch player.ID {
 		case s.hostTransfer.FromID:
-			return "acting: transfer pending"
+			return textForLanguage(lang, "net.state.transfer_pending", nil)
 		case s.hostTransfer.ToID:
-			return "acting: confirm host transfer"
+			return textForLanguage(lang, "net.state.transfer_confirm", nil)
 		}
 	}
 	switch s.phase {
 	case phaseLobby:
 		if player.Ready {
 			if player.ID == s.hostID {
-				return "ready-host"
+				return textForLanguage(lang, "net.state.ready_host", nil)
 			}
-			return "ready"
+			return textForLanguage(lang, "net.state.ready", nil)
 		}
 		if player.ID == s.hostID {
-			return "acting: room setup"
+			return textForLanguage(lang, "net.state.room_setup", nil)
 		}
-		return "waiting: ready up"
+		return textForLanguage(lang, "net.state.ready_wait", nil)
 	case phaseMap:
 		if state := s.seatStateLocked(player.ID); state != nil && state.MapVote > 0 {
-			return "ready: " + s.mapVoteChoiceLabelLocked(state.MapVote)
+			return textForLanguage(lang, "net.state.vote_ready", i18n.Args{"choice": s.mapVoteChoiceLabelForLocked(selfID, state.MapVote)})
 		}
-		return "acting: choose route"
+		return textForLanguage(lang, "net.state.choose_route", nil)
 	case phaseCombat:
 		if s.combat == nil || index >= len(s.combat.Coop.EndTurnVotes) {
-			return "acting"
+			return textForLanguage(lang, "net.state.acting", nil)
 		}
 		if s.combat.Coop.EndTurnVotes[index] {
-			return "ready"
+			return textForLanguage(lang, "net.state.ready", nil)
 		}
-		return "acting"
+		return textForLanguage(lang, "net.state.acting", nil)
 	case phaseReward:
 		if state := s.seatStateLocked(player.ID); state != nil && state.Reward != nil && !state.RewardDone {
-			return "acting: resolve reward"
+			return textForLanguage(lang, "net.state.resolve_reward", nil)
 		}
-		return "ready"
+		return textForLanguage(lang, "net.state.ready", nil)
 	case phaseEvent:
 		if state := s.seatStateLocked(player.ID); state != nil && state.Event != nil && !state.EventDone {
-			return "acting: resolve event"
+			return textForLanguage(lang, "net.state.resolve_event", nil)
 		}
-		return "ready"
+		return textForLanguage(lang, "net.state.ready", nil)
 	case phaseShop:
 		if state := s.seatStateLocked(player.ID); state != nil && state.Shop != nil && !state.ShopDone {
-			return "acting: shop decision"
+			return textForLanguage(lang, "net.state.shop_decision", nil)
 		}
-		return "ready"
+		return textForLanguage(lang, "net.state.ready", nil)
 	case phaseRest:
 		if player.ID == s.hostID {
-			return "acting: campfire choice"
+			return textForLanguage(lang, "net.state.campfire_choice", nil)
 		}
-		return "waiting: host campfire"
+		return textForLanguage(lang, "net.state.host_campfire", nil)
 	case phaseEquipment:
 		if player.ID == s.flowOwner {
-			return "acting: equipment choice"
+			return textForLanguage(lang, "net.state.equipment_choice", nil)
 		}
-		return "waiting: seat equipment"
+		return textForLanguage(lang, "net.state.wait_equipment", nil)
 	case phaseDeckAction:
 		if player.ID == s.flowOwner {
-			return "acting: deck action"
+			return textForLanguage(lang, "net.state.deck_action", nil)
 		}
-		return "waiting: seat deck action"
+		return textForLanguage(lang, "net.state.wait_deck_action", nil)
 	case phaseSummary:
 		if player.ID == s.hostID {
-			return "acting: next run or abandon"
+			return textForLanguage(lang, "net.state.summary_choice", nil)
 		}
-		return "waiting: host summary"
+		return textForLanguage(lang, "net.state.host_summary", nil)
 	default:
-		return "waiting"
+		return textForLanguage(lang, "net.state.waiting", nil)
 	}
 }
 
@@ -238,13 +246,13 @@ func (s *server) resumeSummaryLocked(selfID string) []string {
 	if !s.restoredFromSave {
 		return summary
 	}
-	summary = append(summary, fmt.Sprintf("Recovered phase: %s", phaseDisplayName(s.phase)))
+	summary = append(summary, fmt.Sprintf("已恢复阶段: %s", phaseDisplayName(s.phase)))
 	summary = append(summary, s.phaseResumeLinesLocked(selfID)...)
 	if len(s.offlineSeatSummariesLocked()) > 0 {
-		summary = append(summary, fmt.Sprintf("Offline reserved seats: %d.", len(s.offlineSeatSummariesLocked())))
+		summary = append(summary, fmt.Sprintf("离线保留席位: %d。", len(s.offlineSeatSummariesLocked())))
 	}
 	if len(s.waitingOnLocked()) > 0 {
-		summary = append(summary, fmt.Sprintf("Currently waiting on %d connected seat(s).", len(s.waitingOnLocked())))
+		summary = append(summary, fmt.Sprintf("当前仍在等待 %d 个已连接席位。", len(s.waitingOnLocked())))
 	}
 	return summary
 }
@@ -352,90 +360,73 @@ func (s *server) appendTransferExamplesLocked(selfID string, examples []string) 
 	return examples
 }
 
-func phaseDisplayName(phase string) string {
-	switch phase {
-	case phaseLobby:
-		return "LAN Lobby"
-	case phaseMap:
-		return "Shared Map"
-	case phaseCombat:
-		return "Shared Combat"
-	case phaseReward:
-		return "Reward"
-	case phaseEvent:
-		return "Event"
-	case phaseShop:
-		return "Shop"
-	case phaseRest:
-		return "Campfire"
-	case phaseEquipment:
-		return "Equipment Choice"
-	case phaseDeckAction:
-		return "Deck Action"
-	case phaseSummary:
-		return "Run Summary"
-	default:
-		return phase
-	}
-}
-
-func buildVoteStatus(order []string, players map[string]*roomPlayer, votes []bool) []string {
+func buildVoteStatus(lang string, order []string, players map[string]*roomPlayer, votes []bool) []string {
 	status := make([]string, 0, len(votes))
 	for index := 0; index < len(votes) && index < len(order); index++ {
 		player := players[order[index]]
 		if player == nil {
 			continue
 		}
-		state := "waiting"
+		state := textForLanguage(lang, "net.state.waiting", nil)
 		if !player.Connected {
-			state = "offline-auto-ready"
+			state = textForLanguage(lang, "net.state.offline_auto_ready", nil)
 		} else if votes[index] {
-			state = "ready"
+			state = textForLanguage(lang, "net.state.ready", nil)
 		}
-		status = append(status, fmt.Sprintf("%s: %s", formatSeatPlayer(index+1, player.Name, player.ClassID), state))
+		status = append(status, fmt.Sprintf("%s: %s", formatSeatPlayerFor(lang, index+1, player.Name, player.ClassID), state))
 	}
 	return status
 }
 
-func (s *server) mapVoteChoiceLabelLocked(vote int) string {
+func (s *server) mapVoteChoiceLabelForLocked(selfID string, vote int) string {
+	lang := s.playerLanguageLocked(selfID)
 	if s.run == nil {
-		return fmt.Sprintf("route %d", vote)
+		return textForLanguage(lang, "net.vote.route_index", i18n.Args{"index": vote})
 	}
 	reachable := engine.ReachableNodes(s.run)
 	if vote <= 0 || vote > len(reachable) {
-		return fmt.Sprintf("route %d", vote)
+		return textForLanguage(lang, "net.vote.route_index", i18n.Args{"index": vote})
 	}
 	node := reachable[vote-1]
-	return fmt.Sprintf("route %d -> A%d F%d %s", vote, node.Act, node.Floor, engine.NodeKindName(node.Kind))
+	return textForLanguage(lang, "net.vote.route_named", i18n.Args{"index": vote, "act": node.Act, "floor": node.Floor, "kind": engine.NodeKindName(node.Kind)})
+}
+
+func (s *server) mapVoteChoiceLabelLocked(vote int) string {
+	if s.run == nil {
+		return textForLanguage(i18n.DefaultLanguage, "net.vote.route_index", i18n.Args{"index": vote})
+	}
+	return describeMapVoteChoice(engine.ReachableNodes(s.run), vote)
 }
 
 func (s *server) mapVoteStatusLocked(selfID string, reachable []engine.Node) []string {
+	lang := s.playerLanguageLocked(selfID)
 	statuses := make([]string, 0, len(s.order))
 	for index, id := range s.order {
 		player := s.players[id]
 		if player == nil {
 			continue
 		}
-		label := formatSeatPlayer(index+1, player.Name, player.ClassID)
+		label := formatSeatPlayerFor(lang, index+1, player.Name, player.ClassID)
 		if id == s.hostID {
-			label += " [host]"
+			label += " " + textForLanguage(lang, "net.tag.host", nil)
 		}
 		if id == selfID {
-			label += " [you]"
+			label += " " + textForLanguage(lang, "net.tag.you", nil)
 		}
 		switch {
 		case !player.Connected:
-			statuses = append(statuses, fmt.Sprintf("%s: offline-reserved", label))
+			statuses = append(statuses, fmt.Sprintf("%s: %s", label, textForLanguage(lang, "net.state.offline_reserved", nil)))
 		case s.seatStateLocked(id).MapVote > 0:
-			statuses = append(statuses, fmt.Sprintf("%s: %s", label, describeMapVoteChoice(reachable, s.seatStateLocked(id).MapVote)))
+			statuses = append(statuses, fmt.Sprintf("%s: %s", label, describeMapVoteChoiceFor(lang, reachable, s.seatStateLocked(id).MapVote)))
 		default:
-			statuses = append(statuses, fmt.Sprintf("%s: choosing route", label))
+			statuses = append(statuses, fmt.Sprintf("%s: %s", label, textForLanguage(lang, "net.state.choose_route", nil)))
 		}
 	}
 	return statuses
 }
 
-func (s *server) mapVoteSummaryLocked(reachable []engine.Node) []string {
+func (s *server) mapVoteSummaryForLocked(selfID string, reachable []engine.Node) []string {
+	lang := s.playerLanguageLocked(selfID)
 	counts := map[int]int{}
 	total := 0
 	for _, id := range s.connectedSeatIDsLocked() {
@@ -456,9 +447,13 @@ func (s *server) mapVoteSummaryLocked(reachable []engine.Node) []string {
 	sort.Ints(indexes)
 	lines := make([]string, 0, len(indexes))
 	for _, index := range indexes {
-		lines = append(lines, fmt.Sprintf("%s: %d/%d", describeMapVoteChoice(reachable, index), counts[index], total))
+		lines = append(lines, fmt.Sprintf("%s: %d/%d", describeMapVoteChoiceFor(lang, reachable, index), counts[index], total))
 	}
 	return lines
+}
+
+func (s *server) mapVoteSummaryLocked(reachable []engine.Node) []string {
+	return s.mapVoteSummaryForLocked("", reachable)
 }
 
 func (s *server) mapVoteOddsLocked(vote int) string {
@@ -480,19 +475,27 @@ func (s *server) mapVoteOddsLocked(vote int) string {
 	return fmt.Sprintf("%d/%d", selected, total)
 }
 
-func describeMapVoteChoice(reachable []engine.Node, vote int) string {
+func describeMapVoteChoiceFor(lang string, reachable []engine.Node, vote int) string {
 	if vote <= 0 || vote > len(reachable) {
-		return fmt.Sprintf("route %d", vote)
+		return textForLanguage(lang, "net.vote.route_index", i18n.Args{"index": vote})
 	}
 	node := reachable[vote-1]
-	return fmt.Sprintf("route %d -> A%d F%d %s", vote, node.Act, node.Floor, engine.NodeKindName(node.Kind))
+	return textForLanguage(lang, "net.vote.route_named", i18n.Args{"index": vote, "act": node.Act, "floor": node.Floor, "kind": engine.NodeKindName(node.Kind)})
+}
+
+func describeMapVoteChoice(reachable []engine.Node, vote int) string {
+	return describeMapVoteChoiceFor(i18n.DefaultLanguage, reachable, vote)
+}
+
+func formatSeatPlayerFor(lang string, seat int, name, classID string) string {
+	if classID == "" {
+		return textForLanguage(lang, "net.seat.named", i18n.Args{"seat": seat, "name": name})
+	}
+	return textForLanguage(lang, "net.seat.named_class", i18n.Args{"seat": seat, "name": name, "class": classID})
 }
 
 func formatSeatPlayer(seat int, name, classID string) string {
-	if classID == "" {
-		return fmt.Sprintf("Seat %d %s", seat, name)
-	}
-	return fmt.Sprintf("Seat %d %s [%s]", seat, name, classID)
+	return formatSeatPlayerFor(i18n.DefaultLanguage, seat, name, classID)
 }
 
 func compactStrings(values []string) []string {
@@ -509,9 +512,9 @@ func compactStrings(values []string) []string {
 func combatCommandExample(card cardSnapshot) string {
 	hint := strings.ToLower(card.TargetHint)
 	switch {
-	case strings.Contains(hint, "single enemy"):
+	case strings.Contains(hint, "single enemy"), strings.Contains(hint, "单体敌方"):
 		return fmt.Sprintf("play %d enemy 1", card.Index)
-	case strings.Contains(hint, "single ally"):
+	case strings.Contains(hint, "single ally"), strings.Contains(hint, "单体友方"):
 		return fmt.Sprintf("play %d ally 1", card.Index)
 	default:
 		return fmt.Sprintf("play %d", card.Index)

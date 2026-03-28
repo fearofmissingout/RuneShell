@@ -15,6 +15,7 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 )
 
 const (
@@ -117,7 +118,7 @@ func RunHost(lib *content.Library, port int, name, classID string, forceNew bool
 			_ = srv.listener.Close()
 			return fmt.Errorf("saved room belongs to host %q; use the same name or pass --new", hostPlayer.Name)
 		}
-		srv.roomLog = append(srv.roomLog, "Saved room restored. Waiting for players to reconnect.")
+		srv.roomLog = append(srv.roomLog, "已恢复保存的房间，正在等待玩家重连。")
 	}
 	_ = srv.persistLocked()
 	go srv.serve()
@@ -191,6 +192,7 @@ func (s *server) handleConn(conn net.Conn) {
 		return
 	}
 	name := strings.TrimSpace(helloMsg.Hello.Name)
+	language := normalizeLanguage(helloMsg.Hello.Language)
 	if name == "" {
 		s.mu.Unlock()
 		_ = enc.Encode(message{Type: "error", Error: "name is required"})
@@ -212,6 +214,7 @@ func (s *server) handleConn(conn net.Conn) {
 		id = existingID
 		player = existingPlayer
 		player.Connected = true
+		player.Language = language
 		if oldClient, ok := s.clients[id]; ok {
 			_ = oldClient.conn.Close()
 			delete(s.clients, id)
@@ -246,6 +249,7 @@ func (s *server) handleConn(conn net.Conn) {
 			ID:        id,
 			Name:      name,
 			ClassID:   helloMsg.Hello.ClassID,
+			Language:  language,
 			Ready:     false,
 			Connected: true,
 		}
@@ -406,27 +410,27 @@ func (s *server) handleHostTransferCommandLocked(playerID string, cmd commandPay
 		return
 	}
 	if !target.Connected {
-		s.appendRoomLogLocked("Host transfer failed: target seat is offline.")
+		s.appendRoomLogLocked("房主转移失败：目标座位当前离线。")
 		return
 	}
 	if s.hostTransfer != nil {
-		s.appendRoomLogLocked("Host transfer request already pending.")
+		s.appendRoomLogLocked("已有待处理的房主转移请求。")
 		return
 	}
 	s.hostTransfer = &hostTransferRequest{FromID: playerID, ToID: targetID, Seat: cmd.Seat}
-	s.appendRoomLogLocked(fmt.Sprintf("Host transfer requested: Seat %d %s must confirm.", cmd.Seat, target.Name))
+	s.appendRoomLogLocked(fmt.Sprintf("已发起房主转移：需要座位 %d %s 确认。", cmd.Seat, target.Name))
 	for id := range s.clients {
 		switch id {
 		case targetID:
-			s.setClientNoticeLocked(id, fmt.Sprintf("Host transfer requested to Seat %d. Use accept-host or deny-host.", cmd.Seat))
+			s.setClientNoticeLocked(id, fmt.Sprintf("房主转移已请求给座位 %d。请使用 accept-host 或 deny-host。", cmd.Seat))
 			s.setClientResumeLocked(id, []string{
-				fmt.Sprintf("Pending host transfer request to Seat %d.", cmd.Seat),
-				"Use accept-host to take control or deny-host to reject the request.",
+				fmt.Sprintf("有一条待处理的房主转移请求指向座位 %d。", cmd.Seat),
+				"使用 accept-host 接管房间，或用 deny-host 拒绝请求。",
 			})
 		case playerID:
-			s.setClientNoticeLocked(id, fmt.Sprintf("Host transfer request sent to Seat %d %s.", cmd.Seat, target.Name))
+			s.setClientNoticeLocked(id, fmt.Sprintf("房主转移请求已发送给座位 %d %s。", cmd.Seat, target.Name))
 		default:
-			s.setClientNoticeLocked(id, fmt.Sprintf("Host transfer pending for Seat %d %s.", cmd.Seat, target.Name))
+			s.setClientNoticeLocked(id, fmt.Sprintf("房主转移等待座位 %d %s 处理。", cmd.Seat, target.Name))
 		}
 	}
 }
@@ -1873,16 +1877,16 @@ func parseClientCommand(snapshot *roomSnapshot, line string) (*commandPayload, b
 		return nil, true, nil
 	case "say", "chat":
 		if len(strings.TrimSpace(line)) <= len(fields[0]) {
-			return nil, false, fmt.Errorf("%s <text>", strings.ToLower(fields[0]))
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.chat_usage", i18n.Args{"verb": strings.ToLower(fields[0])}))
 		}
 		text := strings.TrimSpace(line[len(fields[0]):])
 		if text == "" {
-			return nil, false, fmt.Errorf("%s <text>", strings.ToLower(fields[0]))
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.chat_usage", i18n.Args{"verb": strings.ToLower(fields[0])}))
 		}
 		return &commandPayload{Action: "say", Value: text}, false, nil
 	case "host":
 		if len(fields) < 2 {
-			return nil, false, fmt.Errorf("host <seat>")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.host_usage", nil))
 		}
 		seat, err := strconv.Atoi(fields[1])
 		if err != nil {
@@ -1899,20 +1903,20 @@ func parseClientCommand(snapshot *roomSnapshot, line string) (*commandPayload, b
 
 	switch snapshot.Phase {
 	case phaseLobby:
-		return parseLobbyCommand(fields)
+		return parseLobbyCommand(snapshot, fields)
 	case phaseMap:
-		return parseIndexedCommand(fields, "node", "node <index>")
+		return parseIndexedCommand(snapshot, fields, "node", "net.command.node_usage")
 	case phaseCombat:
-		return parseCombatCommand(fields)
+		return parseCombatCommand(snapshot, fields)
 	case phaseReward:
-		return parseRewardCommand(fields)
+		return parseRewardCommand(snapshot, fields)
 	case phaseEvent:
-		return parseIndexedCommand(fields, "choose", "choose <index>")
+		return parseIndexedCommand(snapshot, fields, "choose", "net.command.choose_usage")
 	case phaseShop:
 		if strings.EqualFold(fields[0], "leave") {
 			return &commandPayload{Action: "leave"}, false, nil
 		}
-		return parseIndexedCommand(fields, "buy", "buy <index>")
+		return parseIndexedCommand(snapshot, fields, "buy", "net.command.buy_usage")
 	case phaseRest:
 		switch strings.ToLower(fields[0]) {
 		case "heal":
@@ -1920,7 +1924,7 @@ func parseClientCommand(snapshot *roomSnapshot, line string) (*commandPayload, b
 		case "upgrade":
 			return &commandPayload{Action: "upgrade"}, false, nil
 		default:
-			return nil, false, fmt.Errorf("expected `heal` or `upgrade`")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.rest_expected", nil))
 		}
 	case phaseEquipment:
 		switch strings.ToLower(fields[0]) {
@@ -1929,13 +1933,13 @@ func parseClientCommand(snapshot *roomSnapshot, line string) (*commandPayload, b
 		case "skip":
 			return &commandPayload{Action: "skip"}, false, nil
 		default:
-			return nil, false, fmt.Errorf("expected `take` or `skip`")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.equipment_expected", nil))
 		}
 	case phaseDeckAction:
 		if strings.EqualFold(fields[0], "back") {
 			return &commandPayload{Action: "back"}, false, nil
 		}
-		return parseIndexedCommand(fields, "choose", "choose <index>")
+		return parseIndexedCommand(snapshot, fields, "choose", "net.command.choose_usage")
 	case phaseSummary:
 		if strings.EqualFold(fields[0], "new") {
 			return &commandPayload{Action: "new"}, false, nil
@@ -1943,13 +1947,13 @@ func parseClientCommand(snapshot *roomSnapshot, line string) (*commandPayload, b
 		if strings.EqualFold(fields[0], "abandon") {
 			return &commandPayload{Action: "abandon"}, false, nil
 		}
-		return nil, false, fmt.Errorf("expected `new`, `abandon`, or `quit`")
+		return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.summary_expected", nil))
 	default:
-		return nil, false, fmt.Errorf("unknown phase %q", snapshot.Phase)
+		return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.unknown_phase", i18n.Args{"phase": snapshot.Phase}))
 	}
 }
 
-func parseLobbyCommand(fields []string) (*commandPayload, bool, error) {
+func parseLobbyCommand(snapshot *roomSnapshot, fields []string) (*commandPayload, bool, error) {
 	switch strings.ToLower(fields[0]) {
 	case "ready":
 		return &commandPayload{Action: "ready"}, false, nil
@@ -1957,22 +1961,22 @@ func parseLobbyCommand(fields []string) (*commandPayload, bool, error) {
 		return &commandPayload{Action: "start"}, false, nil
 	case "mode":
 		if len(fields) < 2 {
-			return nil, false, fmt.Errorf("mode <story|endless>")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.mode_usage", nil))
 		}
 		return &commandPayload{Action: "mode", Value: strings.ToLower(fields[1])}, false, nil
 	case "seed":
 		if len(fields) < 2 {
-			return nil, false, fmt.Errorf("seed <number>")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.seed_usage", nil))
 		}
 		return &commandPayload{Action: "seed", Value: fields[1]}, false, nil
 	case "class":
 		if len(fields) < 2 {
-			return nil, false, fmt.Errorf("class <id>")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.class_usage", nil))
 		}
 		return &commandPayload{Action: "class", Value: strings.ToLower(fields[1])}, false, nil
 	case "drop":
 		if len(fields) < 2 {
-			return nil, false, fmt.Errorf("drop <seat>")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.drop_usage", nil))
 		}
 		if strings.EqualFold(fields[1], "all") {
 			return &commandPayload{Action: "drop_all"}, false, nil
@@ -1985,17 +1989,17 @@ func parseLobbyCommand(fields []string) (*commandPayload, bool, error) {
 	case "abandon":
 		return &commandPayload{Action: "abandon"}, false, nil
 	default:
-		return nil, false, fmt.Errorf("expected ready | class <id> | mode <story|endless> | seed <n> | start | drop <seat|all> | abandon")
+		return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.lobby_expected", nil))
 	}
 }
 
-func parseCombatCommand(fields []string) (*commandPayload, bool, error) {
+func parseCombatCommand(snapshot *roomSnapshot, fields []string) (*commandPayload, bool, error) {
 	switch strings.ToLower(fields[0]) {
 	case "end":
 		return &commandPayload{Action: "end"}, false, nil
 	case "play":
 		if len(fields) < 2 {
-			return nil, false, fmt.Errorf("play <card#> [enemy|ally <target#>]")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.play_usage", nil))
 		}
 		index, err := strconv.Atoi(fields[1])
 		if err != nil {
@@ -2013,7 +2017,7 @@ func parseCombatCommand(fields []string) (*commandPayload, bool, error) {
 		return cmd, false, nil
 	case "potion":
 		if len(fields) < 2 {
-			return nil, false, fmt.Errorf("potion <slot#> [enemy|ally <target#>]")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.potion_usage", nil))
 		}
 		index, err := strconv.Atoi(fields[1])
 		if err != nil {
@@ -2030,17 +2034,17 @@ func parseCombatCommand(fields []string) (*commandPayload, bool, error) {
 		}
 		return cmd, false, nil
 	default:
-		return nil, false, fmt.Errorf("expected play | potion | end")
+		return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.combat_expected", nil))
 	}
 }
 
-func parseRewardCommand(fields []string) (*commandPayload, bool, error) {
+func parseRewardCommand(snapshot *roomSnapshot, fields []string) (*commandPayload, bool, error) {
 	switch strings.ToLower(fields[0]) {
 	case "skip":
 		return &commandPayload{Action: "skip"}, false, nil
 	case "take":
 		if len(fields) < 2 {
-			return nil, false, fmt.Errorf("take <card#>")
+			return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.take_usage", nil))
 		}
 		index, err := strconv.Atoi(fields[1])
 		if err != nil {
@@ -2048,13 +2052,13 @@ func parseRewardCommand(fields []string) (*commandPayload, bool, error) {
 		}
 		return &commandPayload{Action: "take", ItemIndex: index}, false, nil
 	default:
-		return nil, false, fmt.Errorf("expected take <card#> or skip")
+		return nil, false, fmt.Errorf("%s", snapshotText(snapshot, "net.command.reward_expected", nil))
 	}
 }
 
-func parseIndexedCommand(fields []string, action, usage string) (*commandPayload, bool, error) {
+func parseIndexedCommand(snapshot *roomSnapshot, fields []string, action, usageKey string) (*commandPayload, bool, error) {
 	if !strings.EqualFold(fields[0], action) || len(fields) < 2 {
-		return nil, false, fmt.Errorf("%s", usage)
+		return nil, false, fmt.Errorf("%s", snapshotText(snapshot, usageKey, nil))
 	}
 	index, err := strconv.Atoi(fields[1])
 	if err != nil {
@@ -2101,12 +2105,12 @@ func renderSnapshot(snapshot *roomSnapshot) {
 }
 
 func renderRoomHeader(title string, snapshot *roomSnapshot) {
-	fmt.Printf("== %s ==\n", title)
+	fmt.Printf("== %s ==\n", localizeConsoleRoomTitle(title))
 	host := snapshotPlayer(snapshot, snapshot.HostID)
 	self := snapshotPlayer(snapshot, snapshot.SelfID)
-	role := "member"
+	role := "成员"
 	if snapshot.SelfID == snapshot.HostID {
-		role = "host"
+		role = "房主"
 	}
 	hostName := snapshot.HostID
 	if host != nil {
@@ -2118,80 +2122,80 @@ func renderRoomHeader(title string, snapshot *roomSnapshot) {
 		selfName = self.Name
 		selfClass = self.ClassID
 	}
-	fmt.Printf("Room: %s | Host: %s | You: %s", snapshot.RoomAddr, hostName, selfName)
+	fmt.Printf("房间: %s | 房主: %s | 你: %s", snapshot.RoomAddr, hostName, selfName)
 	if selfClass != "" {
 		fmt.Printf(" [%s]", selfClass)
 	}
 	if snapshot.Seat > 0 {
-		fmt.Printf(" | Seat: %d", snapshot.Seat)
+		fmt.Printf(" | 座位: %d", snapshot.Seat)
 	}
 	fmt.Printf(" (%s)\n", role)
 	if snapshot.PhaseTitle != "" {
-		fmt.Printf("Phase: %s\n", snapshot.PhaseTitle)
+		fmt.Printf("阶段: %s\n", localizeConsoleRoomTitle(snapshot.PhaseTitle))
 	}
-	renderDivider("Guidance")
+	renderDivider("提示")
 	if snapshot.Banner != "" {
-		fmt.Println("Notice:", snapshot.Banner)
+		fmt.Println("公告:", snapshot.Banner)
 	}
 	if snapshot.PhaseHint != "" {
-		fmt.Println("Status:", snapshot.PhaseHint)
+		fmt.Println("状态:", snapshot.PhaseHint)
 	}
 	if snapshot.ControlLabel != "" {
-		fmt.Println("Control:", snapshot.ControlLabel)
+		fmt.Println("控制说明:", snapshot.ControlLabel)
 	}
 	if snapshot.RoleNote != "" {
-		fmt.Println("Role:", snapshot.RoleNote)
+		fmt.Println("角色说明:", snapshot.RoleNote)
 	}
 	if len(snapshot.Resume) > 0 {
-		fmt.Println("Resume summary:")
+		fmt.Println("恢复摘要:")
 		for _, line := range snapshot.Resume {
 			fmt.Println("-", line)
 		}
 	}
-	renderDivider("Room")
+	renderDivider("房间")
 	connected := connectedSnapshotPlayers(snapshot.Players)
-	fmt.Printf("Connected: %d/%d", connected, len(snapshot.Players))
+	fmt.Printf("已连接: %d/%d", connected, len(snapshot.Players))
 	if len(snapshot.OfflineSeats) > 0 {
-		fmt.Printf(" | Offline: %s\n", strings.Join(snapshot.OfflineSeats, ", "))
-		fmt.Println("Reconnect: offline players can rejoin with the same name to reclaim their seat.")
+		fmt.Printf(" | 离线: %s\n", strings.Join(snapshot.OfflineSeats, ", "))
+		fmt.Println("重连提示: 离线玩家可用相同名字重新加入并接管原座位。")
 	} else {
 		fmt.Println()
 	}
 	if len(snapshot.WaitingOn) > 0 {
-		fmt.Printf("Waiting on: %s\n", strings.Join(snapshot.WaitingOn, ", "))
+		fmt.Printf("等待中: %s\n", strings.Join(snapshot.WaitingOn, ", "))
 	}
 	if len(snapshot.SeatStatus) > 0 {
-		renderDivider("Activity")
-		fmt.Println("Seat status:")
+		renderDivider("活动")
+		fmt.Println("座位状态:")
 		for _, line := range snapshot.SeatStatus {
 			fmt.Println("-", line)
 		}
 	}
 	if len(snapshot.Reconnect) > 0 {
-		fmt.Println("Reconnect commands:")
+		fmt.Println("重连命令:")
 		for _, line := range snapshot.Reconnect {
 			fmt.Println("-", line)
 		}
 	}
 	if len(snapshot.Commands) > 0 {
-		renderDivider("Commands")
-		fmt.Println("Quick commands:")
+		renderDivider("命令")
+		fmt.Println("快捷命令:")
 		for _, line := range snapshot.Commands {
 			fmt.Println("-", line)
 		}
 	}
 	if len(snapshot.Examples) > 0 {
-		fmt.Println("Try next:")
+		fmt.Println("下一步建议:")
 		for _, line := range snapshot.Examples {
 			fmt.Println("-", line)
 		}
 	}
 	if len(snapshot.ChatLog) > 0 {
-		renderDivider("Chat")
+		renderDivider("聊天")
 		if snapshot.ChatUnread > 0 {
-			fmt.Printf("Recent chat (%d, unread %d):\n", len(snapshot.ChatLog), snapshot.ChatUnread)
+			fmt.Printf("最近聊天（%d 条，未读 %d 条）:\n", len(snapshot.ChatLog), snapshot.ChatUnread)
 		} else {
-			fmt.Printf("Recent chat (%d):\n", len(snapshot.ChatLog))
+			fmt.Printf("最近聊天（%d 条）:\n", len(snapshot.ChatLog))
 		}
 		recent := tailStrings(snapshot.ChatLog, 3)
 		unreadShown := min(snapshot.ChatUnreadInView, len(recent))
@@ -2227,28 +2231,28 @@ func renderLobbySnapshot(snapshot *roomSnapshot) {
 		return
 	}
 	renderRoomHeader("LAN Lobby", snapshot)
-	fmt.Printf("Mode: %s | Seed: %d\n", lobby.Mode, lobby.Seed)
+	fmt.Printf("模式: %s | 种子: %d\n", lobby.Mode, lobby.Seed)
 	fmt.Println()
-	fmt.Println("Players:")
+	fmt.Println("玩家:")
 	for _, player := range snapshot.Players {
-		role := "member"
+		role := "成员"
 		if player.ID == snapshot.HostID {
-			role = "host"
+			role = "房主"
 		}
-		ready := "not ready"
+		ready := "未准备"
 		if player.Ready {
-			ready = "ready"
+			ready = "已准备"
 		}
 		if !player.Connected {
-			ready = "offline"
+			ready = "离线"
 		}
-		fmt.Printf("- Seat %d %s [%s] %s (%s)\n", player.Seat, player.Name, player.ClassID, ready, role)
+		fmt.Printf("- 座位 %d %s [%s] %s (%s)\n", player.Seat, player.Name, player.ClassID, ready, role)
 	}
 	fmt.Println()
-	fmt.Println("Available classes:", strings.Join(lobby.Classes, ", "))
+	fmt.Println("可选职业:", strings.Join(lobby.Classes, ", "))
 	if len(snapshot.Recovery) > 0 {
 		fmt.Println()
-		fmt.Println("Recovery actions:")
+		fmt.Println("恢复操作:")
 		for _, line := range snapshot.Recovery {
 			fmt.Println("-", line)
 		}
@@ -2262,18 +2266,18 @@ func renderMapSnapshot(snapshot *roomSnapshot) {
 		return
 	}
 	renderRoomHeader("Shared Map", snapshot)
-	fmt.Printf("Mode: %s | Act %d | Next floor %d | Gold %d\n", view.Mode, view.Act, view.NextFloor, view.Gold)
+	fmt.Printf("模式: %s | Act %d | 下一层 %d | 金币 %d\n", view.Mode, view.Act, view.NextFloor, view.Gold)
 	fmt.Println()
-	fmt.Println("Party:")
+	fmt.Println("队伍:")
 	renderActorLines(snapshot, view.Party)
 	fmt.Println()
-	fmt.Println("Reachable nodes:")
+	fmt.Println("可达节点:")
 	for _, node := range view.Reachable {
 		fmt.Printf("- %d. %s\n", node.Index, node.Label)
 	}
 	if len(view.History) > 0 {
 		fmt.Println()
-		fmt.Println("History:")
+		fmt.Println("路线历史:")
 		for _, line := range view.History {
 			fmt.Println("-", line)
 		}
@@ -2336,19 +2340,19 @@ func renderRewardSnapshot(snapshot *roomSnapshot) {
 		return
 	}
 	renderRoomHeader("Reward", snapshot)
-	fmt.Printf("Gold +%d | Source: %s\n", view.Gold, view.Source)
+	fmt.Printf("金币 +%d | 来源: %s\n", view.Gold, view.Source)
 	renderHighlights(view.Highlights)
 	if view.Relic != "" {
-		fmt.Printf("Relic: %s%s\n", view.Relic, renderBadges(view.RelicBadges))
+		fmt.Printf("遗物: %s%s\n", view.Relic, renderBadges(view.RelicBadges))
 	}
 	if view.Potion != "" {
-		fmt.Println("Potion:", view.Potion)
+		fmt.Println("药水:", view.Potion)
 	}
 	if view.Equipment != nil {
-		fmt.Printf("Equipment pending: %s (%s)\n", view.Equipment.CandidateName, view.Equipment.Slot)
+		fmt.Printf("待处理装备: %s (%s)\n", view.Equipment.CandidateName, view.Equipment.Slot)
 	}
 	fmt.Println()
-	fmt.Println("Cards:")
+	fmt.Println("卡牌:")
 	for _, card := range view.Cards {
 		fmt.Printf("- %d. %s%s | %s\n", card.Index, card.Name, renderBadges(card.Badges), card.Summary)
 	}
@@ -2504,6 +2508,33 @@ func renderActorLines(snapshot *roomSnapshot, actors []actorSnapshot) {
 			line += " | " + actor.Status
 		}
 		fmt.Println(line)
+	}
+}
+
+func localizeConsoleRoomTitle(title string) string {
+	switch strings.TrimSpace(title) {
+	case "LAN Lobby":
+		return "联机大厅"
+	case "Shared Map":
+		return "共享地图"
+	case "Shared Combat":
+		return "共享战斗"
+	case "Reward":
+		return "奖励"
+	case "Event":
+		return "事件"
+	case "Shop":
+		return "商店"
+	case "Campfire":
+		return "篝火"
+	case "Equipment Choice":
+		return "装备选择"
+	case "Deck Action":
+		return "牌组操作"
+	case "Run Summary":
+		return "结算"
+	default:
+		return title
 	}
 }
 

@@ -309,7 +309,7 @@ func localizedKeyMap(lang string) keyMap {
 		Potion:  key.NewBinding(key.WithKeys("z"), key.WithHelp("z", i18n.Text(lang, "key.potion", nil))),
 		Skip:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", i18n.Text(lang, "key.skip", nil))),
 		Leave:   key.NewBinding(key.WithKeys("l"), key.WithHelp("l", i18n.Text(lang, "key.leave", nil))),
-		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", i18n.Text(lang, "key.help", nil))),
 		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", i18n.Text(lang, "menu.quit", nil))),
 	}
 }
@@ -616,7 +616,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message = msg.err.Error()
 			return m, clearMessage()
 		}
-		m.message = "Multiplayer session closed."
+		m.message = m.theme.Text("message.multiplayer_closed")
 		return m, clearMessage()
 	case tickMsg:
 		m.message = ""
@@ -653,9 +653,12 @@ func (m model) statsOverlayLines() (string, []string, []string) {
 	switch {
 	case m.screen == screenMultiplayerRoom && m.multiplayerSnapshot != nil && m.multiplayerSnapshot.Stats != nil:
 		stats := m.multiplayerSnapshot.Stats
-		title := "Multiplayer Stats"
+		title := m.theme.Text("stats.multiplayer_title")
 		if stats.SeatName != "" {
-			title = fmt.Sprintf("%s | %s", title, stats.SeatName)
+			title = m.theme.Textf("stats.multiplayer_title_with_name", i18n.Args{
+				"title": title,
+				"name":  stats.SeatName,
+			})
 		}
 		return title, engine.FormatCombatMetrics(stats.Combat, stats.CombatTurns), engine.FormatCombatMetrics(stats.Run, stats.RunTurns)
 	case m.run != nil:
@@ -663,9 +666,9 @@ func (m model) statsOverlayLines() (string, []string, []string) {
 		if m.combat != nil {
 			combatLines = engine.FormatCombatMetrics(engine.CombatMetricsForSeat(m.combat, 0), engine.CombatTurns(m.combat))
 		}
-		return "Solo Stats", combatLines, engine.FormatCombatMetrics(m.run.Stats.Metrics, m.run.Stats.CombatTurns)
+		return m.theme.Text("stats.solo_title"), combatLines, engine.FormatCombatMetrics(m.run.Stats.Metrics, m.run.Stats.CombatTurns)
 	default:
-		return "Stats", nil, nil
+		return m.theme.Text("stats.title"), nil, nil
 	}
 }
 
@@ -848,14 +851,14 @@ func (m model) updateCombat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.combatTopPage = 0
 	case key.Matches(msg, m.keys.Potion):
 		if len(m.run.Player.Potions) == 0 {
-			m.message = "No potion is available right now."
+			m.message = m.theme.Text("message.no_potion_available")
 			return m, clearMessage()
 		}
 		m.combatPotionMode = !m.combatPotionMode
 		m.combatPotionIndex = min(m.combatPotionIndex, len(m.run.Player.Potions)-1)
 		m.syncCombatTarget()
 	case key.Matches(msg, m.keys.EndTurn):
-		if blocked, cmd := m.blockRapidAction("Action blocked: slow down a little before ending the turn."); blocked {
+		if blocked, cmd := m.blockRapidAction(m.theme.Text("message.action_blocked_end_turn")); blocked {
 			return m, cmd
 		}
 		engine.EndPlayerTurn(m.lib, m.run.Player, m.combat)
@@ -866,12 +869,12 @@ func (m model) updateCombat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.markActionDispatched()
 		changed = true
 	case key.Matches(msg, m.keys.Select):
-		if blocked, cmd := m.blockRapidAction("Action blocked: slow down a little before playing another card."); blocked {
+		if blocked, cmd := m.blockRapidAction(m.theme.Text("message.action_blocked_play")); blocked {
 			return m, cmd
 		}
 		if m.combatPotionMode {
 			if len(m.run.Player.Potions) == 0 {
-				m.message = "No potion is available right now."
+				m.message = m.theme.Text("message.no_potion_available")
 				return m, clearMessage()
 			}
 			potionIndex := min(m.combatPotionIndex, len(m.run.Player.Potions)-1)
@@ -1115,7 +1118,7 @@ func (m model) updateShop(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if offer.Kind == "remove" {
 			if m.run.Player.Gold < offer.Price {
-				m.message = "金币不足"
+				m.message = m.theme.Text("message.insufficient_gold")
 				return m, clearMessage()
 			}
 			return m.startDeckActionFlow("shop_remove", offer.Price)
@@ -1208,7 +1211,7 @@ func (m model) updateDeckAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, nil
 			}
-			m.restLog = []string{"Upgraded card: " + name}
+			m.restLog = []string{m.theme.Textf("rest.log.upgraded_card", i18n.Args{"name": name})}
 			if err := engine.AdvanceNonCombatNode(m.run, m.currentNode); err != nil {
 				m.err = err
 				return m, nil
@@ -1305,12 +1308,12 @@ func (m model) startDeckActionFlow(mode string, price int) (tea.Model, tea.Cmd) 
 	plan := engine.DeckActionPlan{Mode: mode, Price: price}
 	switch mode {
 	case "rest_upgrade":
-		plan.Title = "Choose a card to upgrade"
-		plan.Subtitle = "The campfire upgrade applies that card's upgrade values."
+		plan.Title = m.theme.Text("deck_action.rest_upgrade.title")
+		plan.Subtitle = m.theme.Text("deck_action.rest_upgrade.subtitle")
 		plan.Indexes = engine.UpgradableCardIndexes(m.lib, m.run.Player.Deck)
 	case "shop_remove":
-		plan.Title = "Choose a card to remove"
-		plan.Subtitle = fmt.Sprintf("Service price: %d gold", price)
+		plan.Title = m.theme.Text("deck_action.shop_remove.title")
+		plan.Subtitle = m.theme.Textf("deck_action.shop_remove.subtitle", i18n.Args{"price": price})
 		plan.Indexes = make([]int, len(m.run.Player.Deck))
 		for i := range m.run.Player.Deck {
 			plan.Indexes[i] = i
@@ -1453,7 +1456,7 @@ func choiceByID(choices []content.EventChoiceDef, choiceID string) content.Event
 
 func (m model) View() string {
 	if m.err != nil {
-		return m.theme.Panel.Render("错误: " + m.err.Error())
+		return m.theme.Panel.Render(m.theme.Textf("common.error_prefix", i18n.Args{"message": m.err.Error()}))
 	}
 	width := m.width
 	if width <= 0 {
@@ -1503,7 +1506,7 @@ func (m model) View() string {
 	case screenMultiplayerJoin:
 		body = ui.RenderMultiplayerSetup(m.theme, m.theme.Text("multiplayer.join.title"), m.theme.Text("multiplayer.join.subtitle"), multiplayerJoinLines(m), m.index, multiplayerJoinHelp(m), width)
 	case screenMultiplayerRoom:
-		actions := multiplayerQuickActions(m.multiplayerSnapshot)
+		actions := multiplayerQuickActions(m.theme, m.multiplayerSnapshot)
 		actionLabels := multiplayerQuickActionLabels(actions)
 		if m.multiplayerUsesCombatControls() {
 			actionLabels = nil

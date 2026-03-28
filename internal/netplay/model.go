@@ -18,8 +18,9 @@ type message struct {
 }
 
 type helloPayload struct {
-	Name    string `json:"name"`
-	ClassID string `json:"class_id"`
+	Name     string `json:"name"`
+	ClassID  string `json:"class_id"`
+	Language string `json:"language,omitempty"`
 }
 
 type commandPayload struct {
@@ -37,6 +38,7 @@ type roomPlayer struct {
 	Seat      int    `json:"seat,omitempty"`
 	Name      string `json:"name"`
 	ClassID   string `json:"class_id"`
+	Language  string `json:"language,omitempty"`
 	Ready     bool   `json:"ready"`
 	Connected bool   `json:"connected"`
 }
@@ -234,6 +236,7 @@ type summarySnapshot struct {
 
 type roomSnapshot struct {
 	SelfID           string              `json:"self_id"`
+	Language         string              `json:"language,omitempty"`
 	Seat             int                 `json:"seat,omitempty"`
 	HostID           string              `json:"host_id"`
 	RoomAddr         string              `json:"room_addr"`

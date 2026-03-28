@@ -30,7 +30,7 @@ func (s *server) announcePhaseLocked(reason string) {
 		if player == nil || !player.Connected {
 			continue
 		}
-		notice := fmt.Sprintf("Phase changed: %s.", title)
+		notice := fmt.Sprintf("阶段已切换：%s。", title)
 		if reason != "" {
 			notice = fmt.Sprintf("%s %s", notice, reason)
 		}
@@ -40,20 +40,20 @@ func (s *server) announcePhaseLocked(reason string) {
 }
 
 func (s *server) phaseAnnouncementLinesLocked(selfID string) []string {
-	presentation := s.phasePresentationLocked(selfID, s.waitingOnLocked())
+	presentation := s.phasePresentationLocked(selfID, s.waitingOnForLocked(selfID))
 	lines := []string{}
 	lines = append(lines, s.phaseResumeLinesLocked(selfID)...)
 	if presentation.ControlLabel != "" {
-		lines = append(lines, "Control: "+presentation.ControlLabel)
+		lines = append(lines, "控制说明: "+presentation.ControlLabel)
 	}
 	if presentation.RoleNote != "" {
 		lines = append(lines, presentation.RoleNote)
 	}
 	examples := presentation.Examples
 	if len(examples) > 0 {
-		lines = append(lines, "Suggested next: "+strings.Join(examples, " | "))
+		lines = append(lines, "建议下一步: "+strings.Join(examples, " | "))
 	} else {
-		lines = append(lines, "Suggested next: wait for the next room update, or use `help`, `status`, or `log` locally.")
+		lines = append(lines, "建议下一步: 等待下一次房间更新，或在本地使用 `help`、`status`、`log`。")
 	}
 	return compactStrings(lines)
 }

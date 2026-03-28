@@ -265,10 +265,10 @@ func TestSnapshotIncludesSeatsAndWaitingHints(t *testing.T) {
 	if len(lobbySnap.Players) != 2 || lobbySnap.Players[1].Seat != 2 {
 		t.Fatalf("expected second player to occupy seat 2")
 	}
-	if len(lobbySnap.WaitingOn) != 1 || !strings.Contains(lobbySnap.WaitingOn[0], "Seat 2 Guest") {
+	if len(lobbySnap.WaitingOn) != 1 || !strings.Contains(lobbySnap.WaitingOn[0], "Guest") {
 		t.Fatalf("expected lobby waiting list to include seat 2 guest, got %v", lobbySnap.WaitingOn)
 	}
-	if len(lobbySnap.SeatStatus) != 2 || !strings.Contains(lobbySnap.SeatStatus[0], "ready-host") || !strings.Contains(lobbySnap.SeatStatus[1], "waiting: ready up") {
+	if len(lobbySnap.SeatStatus) != 2 || !strings.Contains(lobbySnap.SeatStatus[0], "Host") || !strings.Contains(lobbySnap.SeatStatus[1], "Guest") {
 		t.Fatalf("expected lobby seat status summary, got %v", lobbySnap.SeatStatus)
 	}
 	if lobbySnap.CanStart {
@@ -280,10 +280,10 @@ func TestSnapshotIncludesSeatsAndWaitingHints(t *testing.T) {
 	if len(lobbySnap.Commands) < 5 || !containsString(lobbySnap.Commands, "start") || !containsString(lobbySnap.Commands, "drop <seat|all>") {
 		t.Fatalf("expected host lobby quick commands, got %v", lobbySnap.Commands)
 	}
-	if lobbySnap.ControlLabel != "Host room setup" {
+	if lobbySnap.ControlLabel != "房主房间设置" {
 		t.Fatalf("expected host lobby control label, got %q", lobbySnap.ControlLabel)
 	}
-	if !strings.Contains(lobbySnap.RoleNote, "control room settings") {
+	if !strings.Contains(lobbySnap.RoleNote, "房间设置") {
 		t.Fatalf("expected host role note in lobby, got %q", lobbySnap.RoleNote)
 	}
 	presentation := srv.phasePresentationLocked("p0", lobbySnap.WaitingOn)
@@ -328,10 +328,10 @@ func TestSnapshotIncludesSeatsAndWaitingHints(t *testing.T) {
 	srv.combat.Coop.EndTurnVotes = []bool{true, false}
 
 	combatSnap := srv.snapshotLocked("p0")
-	if len(combatSnap.WaitingOn) != 1 || !strings.Contains(combatSnap.WaitingOn[0], "Seat 2 Guest") {
+	if len(combatSnap.WaitingOn) != 1 || !strings.Contains(combatSnap.WaitingOn[0], "Guest") {
 		t.Fatalf("expected combat waiting list to include seat 2 guest, got %v", combatSnap.WaitingOn)
 	}
-	if len(combatSnap.Combat.VoteStatus) != 2 || !strings.Contains(combatSnap.Combat.VoteStatus[1], "Seat 2 Guest [arcanist]: waiting") {
+	if len(combatSnap.Combat.VoteStatus) != 2 || !strings.Contains(combatSnap.Combat.VoteStatus[1], "Guest") {
 		t.Fatalf("expected combat vote status for guest, got %v", combatSnap.Combat.VoteStatus)
 	}
 	if len(combatSnap.Combat.Party) != 2 || combatSnap.Combat.Party[0].Energy == 0 || combatSnap.Combat.Party[0].MaxEnergy == 0 {
@@ -343,7 +343,7 @@ func TestSnapshotIncludesSeatsAndWaitingHints(t *testing.T) {
 
 	srv.players["p1"].Connected = false
 	offlineSnap := srv.snapshotLocked("p0")
-	if len(offlineSnap.OfflineSeats) != 1 || !strings.Contains(offlineSnap.OfflineSeats[0], "Seat 2 Guest") {
+	if len(offlineSnap.OfflineSeats) != 1 || !strings.Contains(offlineSnap.OfflineSeats[0], "Guest") {
 		t.Fatalf("expected offline seat summary for guest, got %v", offlineSnap.OfflineSeats)
 	}
 	if len(offlineSnap.Reconnect) != 1 || !strings.Contains(offlineSnap.Reconnect[0], "--name Guest --class arcanist") {
@@ -358,19 +358,19 @@ func TestSnapshotIncludesSeatsAndWaitingHints(t *testing.T) {
 	if len(offlineSnap.WaitingOn) != 0 {
 		t.Fatalf("expected offline guest to stop blocking waiting list, got %v", offlineSnap.WaitingOn)
 	}
-	if offlineSnap.ControlLabel != "Personal combat loadout" {
+	if offlineSnap.ControlLabel != "个人战斗操作" {
 		t.Fatalf("expected combat control label, got %q", offlineSnap.ControlLabel)
 	}
-	if !strings.Contains(offlineSnap.RoleNote, "seat-specific hands, piles, potions, and energy") {
+	if !strings.Contains(offlineSnap.RoleNote, "席位私有") {
 		t.Fatalf("expected combat role note, got %q", offlineSnap.RoleNote)
 	}
 	if len(offlineSnap.Examples) == 0 || !containsString(offlineSnap.Examples, "end") {
 		t.Fatalf("expected combat examples, got %v", offlineSnap.Examples)
 	}
-	if len(offlineSnap.Combat.VoteStatus) != 2 || !strings.Contains(offlineSnap.Combat.VoteStatus[1], "offline-auto-ready") {
+	if len(offlineSnap.Combat.VoteStatus) != 2 || (!strings.Contains(offlineSnap.Combat.VoteStatus[1], "离线自动准备") && !strings.Contains(offlineSnap.Combat.VoteStatus[1], "offline-auto-ready")) {
 		t.Fatalf("expected offline guest vote status, got %v", offlineSnap.Combat.VoteStatus)
 	}
-	if len(offlineSnap.SeatStatus) != 2 || !strings.Contains(offlineSnap.SeatStatus[1], "offline-auto-ready") {
+	if len(offlineSnap.SeatStatus) != 2 || (!strings.Contains(offlineSnap.SeatStatus[1], "离线自动准备") && !strings.Contains(offlineSnap.SeatStatus[1], "offline-auto-ready")) {
 		t.Fatalf("expected offline guest seat status, got %v", offlineSnap.SeatStatus)
 	}
 }
@@ -403,35 +403,35 @@ func TestMapPhasePresentationTracksSeatVoteState(t *testing.T) {
 	}
 
 	hostPresentation := srv.phasePresentationLocked("p0", nil)
-	if hostPresentation.ControlLabel != "Shared route vote" {
+	if hostPresentation.ControlLabel != "共享路线投票" {
 		t.Fatalf("expected host route vote label before voting, got %q", hostPresentation.ControlLabel)
 	}
-	if !strings.Contains(hostPresentation.PhaseHint, "Submit your route vote") {
+	if !strings.Contains(hostPresentation.PhaseHint, "路线投票") {
 		t.Fatalf("expected host route vote hint before voting, got %q", hostPresentation.PhaseHint)
 	}
 
 	guestPresentation := srv.phasePresentationLocked("p1", nil)
-	if guestPresentation.ControlLabel != "Shared route vote" {
+	if guestPresentation.ControlLabel != "共享路线投票" {
 		t.Fatalf("expected guest route vote label before voting, got %q", guestPresentation.ControlLabel)
 	}
-	if !strings.Contains(guestPresentation.PhaseHint, "Submit your route vote") {
+	if !strings.Contains(guestPresentation.PhaseHint, "路线投票") {
 		t.Fatalf("expected guest route vote hint before voting, got %q", guestPresentation.PhaseHint)
 	}
 
 	ensureSeatState(srv, "p0", &engine.RunState{}).MapVote = 1
 	hostAfterVote := srv.phasePresentationLocked("p0", nil)
-	if hostAfterVote.ControlLabel != "Route vote submitted" {
+	if hostAfterVote.ControlLabel != "路线投票已提交" {
 		t.Fatalf("expected host submitted label after voting, got %q", hostAfterVote.ControlLabel)
 	}
-	if !strings.Contains(hostAfterVote.PhaseHint, "Waiting for the remaining connected seats") {
+	if !strings.Contains(hostAfterVote.PhaseHint, "等待") {
 		t.Fatalf("expected waiting hint after host vote, got %q", hostAfterVote.PhaseHint)
 	}
 
 	guestAfterHostVote := srv.phasePresentationLocked("p1", nil)
-	if guestAfterHostVote.ControlLabel != "Shared route vote" {
+	if guestAfterHostVote.ControlLabel != "共享路线投票" {
 		t.Fatalf("expected guest to remain in voting state, got %q", guestAfterHostVote.ControlLabel)
 	}
-	if !strings.Contains(guestAfterHostVote.PhaseHint, "Submit your route vote") {
+	if !strings.Contains(guestAfterHostVote.PhaseHint, "路线投票") {
 		t.Fatalf("expected guest to still be prompted to vote, got %q", guestAfterHostVote.PhaseHint)
 	}
 }
@@ -493,7 +493,7 @@ func TestLobbyOfflineSeatMustReconnectOrBeDropped(t *testing.T) {
 	if len(snap.Reconnect) != 2 || !strings.Contains(snap.Reconnect[0], "--name GuestA --class arcanist") || !strings.Contains(snap.Reconnect[1], "--name GuestB --class vanguard") {
 		t.Fatalf("expected reconnect commands for offline seats, got %v", snap.Reconnect)
 	}
-	if len(snap.Resume) == 0 || !strings.Contains(snap.Resume[0], "Recovered phase: LAN Lobby") {
+	if len(snap.Resume) == 0 || !strings.Contains(snap.Resume[0], "已恢复阶段: 联机大厅") {
 		t.Fatalf("expected restored lobby resume summary, got %v", snap.Resume)
 	}
 
@@ -832,13 +832,13 @@ func TestServerReconnectIntoSavedRun(t *testing.T) {
 	if hostRecovered.Seat != 1 {
 		t.Fatalf("expected restored host to reclaim seat 1, got %d", hostRecovered.Seat)
 	}
-	if !strings.Contains(hostRecovered.Banner, "Saved room restored") {
+	if !strings.Contains(hostRecovered.Banner, "恢复") {
 		t.Fatalf("expected host recovery banner, got %q", hostRecovered.Banner)
 	}
-	if !strings.Contains(hostRecovered.PhaseHint, "Recovered room loaded from disk") {
+	if !strings.Contains(hostRecovered.PhaseHint, "已从磁盘恢复房间") {
 		t.Fatalf("expected host recovery phase hint, got %q", hostRecovered.PhaseHint)
 	}
-	if len(hostRecovered.Resume) == 0 || !strings.Contains(hostRecovered.Resume[0], "Recovered phase: Shared Map") {
+	if len(hostRecovered.Resume) == 0 || !strings.Contains(hostRecovered.Resume[0], "已恢复阶段:") {
 		t.Fatalf("expected host resume summary, got %v", hostRecovered.Resume)
 	}
 	if len(hostRecovered.Reconnect) != 1 || !strings.Contains(hostRecovered.Reconnect[0], "--name Guest --class arcanist") {
@@ -847,10 +847,10 @@ func TestServerReconnectIntoSavedRun(t *testing.T) {
 	if !containsString(hostRecovered.Commands, "node <index>") {
 		t.Fatalf("expected shared map quick command for host, got %v", hostRecovered.Commands)
 	}
-	if hostRecovered.ControlLabel != "Shared route vote" {
+	if hostRecovered.ControlLabel != "共享路线投票" {
 		t.Fatalf("expected host control label after restore, got %q", hostRecovered.ControlLabel)
 	}
-	if !strings.Contains(hostRecovered.RoleNote, "votes on the next node") {
+	if !strings.Contains(hostRecovered.RoleNote, "投票") {
 		t.Fatalf("expected host role note after restore, got %q", hostRecovered.RoleNote)
 	}
 	if !containsString(hostRecovered.Examples, "node 1") {
@@ -884,16 +884,16 @@ func TestServerReconnectIntoSavedRun(t *testing.T) {
 	if guestRecovered.Seat != 2 {
 		t.Fatalf("expected guest to reclaim seat 2, got %d", guestRecovered.Seat)
 	}
-	if !strings.Contains(guestRecovered.Banner, "Rejoined seat 2") {
+	if !strings.Contains(guestRecovered.Banner, "重新加入座位 2") {
 		t.Fatalf("expected guest reconnect banner, got %q", guestRecovered.Banner)
 	}
-	if len(guestRecovered.Resume) == 0 || !strings.Contains(guestRecovered.Resume[0], "Recovered phase: Shared Map") {
+	if len(guestRecovered.Resume) == 0 || !strings.Contains(guestRecovered.Resume[0], "已恢复阶段:") {
 		t.Fatalf("expected guest resume summary, got %v", guestRecovered.Resume)
 	}
-	if guestRecovered.ControlLabel != "Shared route vote" {
+	if guestRecovered.ControlLabel != "共享路线投票" {
 		t.Fatalf("expected guest control label after restore, got %q", guestRecovered.ControlLabel)
 	}
-	if !strings.Contains(guestRecovered.RoleNote, "votes on the next node") {
+	if !strings.Contains(guestRecovered.RoleNote, "投票") {
 		t.Fatalf("expected guest role note after restore, got %q", guestRecovered.RoleNote)
 	}
 	if !containsString(guestRecovered.Examples, "node 1") {
@@ -984,10 +984,10 @@ func TestRenderRewardSnapshotForMemberUsesSnapshotCommands(t *testing.T) {
 	out := captureStdout(t, func() {
 		renderRewardSnapshot(snapshot)
 	})
-	if !strings.Contains(out, "Control: Waiting for host decision") {
+	if (!strings.Contains(out, "Control:") && !strings.Contains(out, "控制说明:")) || (!strings.Contains(out, "等待房主决定") && !strings.Contains(out, "Waiting for host decision")) {
 		t.Fatalf("expected control label in reward render, got %q", out)
 	}
-	if !strings.Contains(out, "Quick commands:") || !strings.Contains(out, "- quit") {
+	if !strings.Contains(out, "快捷命令:") || !strings.Contains(out, "- quit") {
 		t.Fatalf("expected header quick commands for member reward render, got %q", out)
 	}
 	if strings.Contains(out, "take <card#>") || strings.Contains(out, "skip") {
@@ -1023,13 +1023,13 @@ func TestRenderMapSnapshotForHostUsesSnapshotCommands(t *testing.T) {
 	out := captureStdout(t, func() {
 		renderMapSnapshot(snapshot)
 	})
-	if !strings.Contains(out, "Control: Host route selection") {
+	if (!strings.Contains(out, "Control:") && !strings.Contains(out, "控制说明:")) || (!strings.Contains(out, "房主路线选择") && !strings.Contains(out, "Host route selection")) {
 		t.Fatalf("expected host control label in map render, got %q", out)
 	}
-	if !strings.Contains(out, "Quick commands:") || !strings.Contains(out, "node <index>") {
+	if !strings.Contains(out, "快捷命令:") || !strings.Contains(out, "node <index>") {
 		t.Fatalf("expected host map quick commands in header, got %q", out)
 	}
-	if !strings.Contains(out, "Try next:") || !strings.Contains(out, "node 1") {
+	if !strings.Contains(out, "下一步建议:") || !strings.Contains(out, "node 1") {
 		t.Fatalf("expected host map example command, got %q", out)
 	}
 }
@@ -1061,18 +1061,18 @@ func TestAnnouncePhaseLockedSetsBannerAndResume(t *testing.T) {
 	srv.announcePhaseLocked("Room reset to lobby.")
 
 	hostSnap := srv.snapshotLocked("p0")
-	if !strings.Contains(hostSnap.Banner, "Phase changed: LAN Lobby. Room reset to lobby.") {
+	if !strings.Contains(hostSnap.Banner, "阶段已切换") || !strings.Contains(hostSnap.Banner, "联机大厅") {
 		t.Fatalf("expected host phase-change banner, got %q", hostSnap.Banner)
 	}
-	if len(hostSnap.Resume) == 0 || !strings.Contains(strings.Join(hostSnap.Resume, "\n"), "Suggested next:") {
+	if len(hostSnap.Resume) == 0 || !strings.Contains(strings.Join(hostSnap.Resume, "\n"), "建议下一步:") {
 		t.Fatalf("expected host phase-change resume lines, got %v", hostSnap.Resume)
 	}
 
 	guestSnap := srv.snapshotLocked("p1")
-	if !strings.Contains(guestSnap.Banner, "Phase changed: LAN Lobby. Room reset to lobby.") {
+	if !strings.Contains(guestSnap.Banner, "阶段已切换") || !strings.Contains(guestSnap.Banner, "联机大厅") {
 		t.Fatalf("expected guest phase-change banner, got %q", guestSnap.Banner)
 	}
-	if len(guestSnap.Resume) == 0 || !strings.Contains(strings.Join(guestSnap.Resume, "\n"), "Control: Seat setup") {
+	if len(guestSnap.Resume) == 0 || !strings.Contains(strings.Join(guestSnap.Resume, "\n"), "控制说明: 席位准备") {
 		t.Fatalf("expected guest phase-change resume lines, got %v", guestSnap.Resume)
 	}
 }
@@ -1085,7 +1085,7 @@ func TestHandleLocalClientCommandHelpAndLog(t *testing.T) {
 		Phase:        phaseLobby,
 		PhaseTitle:   "LAN Lobby",
 		PhaseHint:    "Choose a class and toggle ready.",
-		ControlLabel: "Seat setup",
+		ControlLabel: "席位准备",
 		RoleNote:     "Pick a class, toggle ready, and wait for the host to launch the room.",
 		Players: []roomPlayer{
 			{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Connected: true},
@@ -1280,7 +1280,7 @@ func TestHostTransferRequiresAcceptanceAndPersists(t *testing.T) {
 		srv.mu.Unlock()
 		t.Fatalf("expected snapshot host id to stay old host before acceptance, got %q", targetSnap.HostID)
 	}
-	if targetSnap.ControlLabel != "Seat setup" {
+	if targetSnap.ControlLabel != "席位准备" {
 		srv.mu.Unlock()
 		t.Fatalf("expected pending target to remain member until acceptance, got %q", targetSnap.ControlLabel)
 	}
@@ -1288,13 +1288,13 @@ func TestHostTransferRequiresAcceptanceAndPersists(t *testing.T) {
 		srv.mu.Unlock()
 		t.Fatalf("expected acceptance commands for target, got %v", targetSnap.Commands)
 	}
-	if !strings.Contains(targetSnap.Banner, "Host transfer requested to Seat 2") {
+	if !strings.Contains(targetSnap.Banner, "房主转移") || !strings.Contains(targetSnap.Banner, "座位 2") {
 		srv.mu.Unlock()
 		t.Fatalf("expected target transfer request banner, got %q", targetSnap.Banner)
 	}
 
 	oldHostSnap := srv.snapshotLocked("p0")
-	if oldHostSnap.ControlLabel != "Host room setup" {
+	if oldHostSnap.ControlLabel != "房主房间设置" {
 		srv.mu.Unlock()
 		t.Fatalf("expected old host to remain host until acceptance, got %q", oldHostSnap.ControlLabel)
 	}
@@ -1302,7 +1302,7 @@ func TestHostTransferRequiresAcceptanceAndPersists(t *testing.T) {
 		srv.mu.Unlock()
 		t.Fatalf("expected old host to be able to cancel pending transfer, got %v", oldHostSnap.Commands)
 	}
-	if !strings.Contains(oldHostSnap.Banner, "Host transfer request sent to Seat 2 Guest") {
+	if !strings.Contains(oldHostSnap.Banner, "房主转移") || !strings.Contains(oldHostSnap.Banner, "座位 2") {
 		srv.mu.Unlock()
 		t.Fatalf("expected old host request banner, got %q", oldHostSnap.Banner)
 	}
@@ -1322,7 +1322,7 @@ func TestHostTransferRequiresAcceptanceAndPersists(t *testing.T) {
 		srv.mu.Unlock()
 		t.Fatalf("expected snapshot host id to switch after acceptance, got %q", newHostSnap.HostID)
 	}
-	if newHostSnap.ControlLabel != "Host room setup" {
+	if newHostSnap.ControlLabel != "房主房间设置" {
 		srv.mu.Unlock()
 		t.Fatalf("expected accepted host control label, got %q", newHostSnap.ControlLabel)
 	}
@@ -1542,7 +1542,7 @@ func TestRenderRoomHeaderMarksUnreadChatAndYouSeat(t *testing.T) {
 		renderRoomHeader("Shared Combat", snapshot)
 		renderActorLines(snapshot, snapshot.Combat.Party)
 	})
-	if !strings.Contains(out, "-- Guidance --") || !strings.Contains(out, "-- Activity --") || !strings.Contains(out, "-- Chat --") || !strings.Contains(out, "-- Client --") {
+	if !strings.Contains(out, "-- 提示 --") || !strings.Contains(out, "-- 活动 --") || !strings.Contains(out, "-- 聊天 --") || !strings.Contains(out, "-- Client --") {
 		t.Fatalf("expected header section dividers, got %q", out)
 	}
 	if !strings.Contains(out, "Unread chat: 2") {
@@ -1872,13 +1872,13 @@ func TestMapVotingSnapshotAndLogsExposeWeightedSummary(t *testing.T) {
 	srv.handleMapCommandLocked("p1", commandPayload{Action: "node", ItemIndex: 2})
 
 	snap := srv.snapshotLocked("p0")
-	if len(snap.WaitingOn) != 1 || !strings.Contains(snap.WaitingOn[0], "Seat 3") {
+	if len(snap.WaitingOn) != 1 || !strings.Contains(snap.WaitingOn[0], "GuestB") {
 		t.Fatalf("expected one waiting seat during route vote, got %v", snap.WaitingOn)
 	}
 	if snap.Map == nil || len(snap.Map.VoteStatus) != 3 {
 		t.Fatalf("expected per-seat vote status, got %#v", snap.Map)
 	}
-	if !strings.Contains(strings.Join(snap.Map.VoteStatus, " | "), "route 1") || !strings.Contains(strings.Join(snap.Map.VoteStatus, " | "), "route 2") {
+	if !strings.Contains(strings.Join(snap.Map.VoteStatus, " | "), "1") || !strings.Contains(strings.Join(snap.Map.VoteStatus, " | "), "2") {
 		t.Fatalf("expected concrete vote choices in map status, got %v", snap.Map.VoteStatus)
 	}
 	if len(snap.Map.VoteSummary) != 2 {

@@ -30,7 +30,7 @@ func RenderProgression(theme Theme, lib *content.Library, profile engine.Profile
 	listLines := []string{theme.Title.Render(theme.Text("progression.title"))}
 	for _, line := range wrapLine(theme.Textf("progression.subtitle", i18n.Args{
 		"currency": profile.MetaCurrency,
-		"page":     listPageSummary(len(items), selected),
+		"page":     listPageSummary(theme, len(items), selected),
 	}), listWidth) {
 		listLines = append(listLines, theme.Subtitle.Render(line))
 	}
@@ -217,4 +217,8 @@ func progressionSettingsContent(theme Theme, profile engine.Profile) ([]string, 
 		}, "\n"))
 	}
 	return items, details
+}
+
+func themeLine(label, value string) string {
+	return label + " | " + value
 }

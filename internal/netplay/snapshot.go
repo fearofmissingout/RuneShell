@@ -7,9 +7,11 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 )
 
 func (s *server) snapshotLocked(selfID string) *roomSnapshot {
+	lang := s.playerLanguageLocked(selfID)
 	players := make([]roomPlayer, 0, len(s.order))
 	for seat, id := range s.order {
 		if player := s.players[id]; player != nil {
@@ -18,20 +20,22 @@ func (s *server) snapshotLocked(selfID string) *roomSnapshot {
 				Seat:      seat + 1,
 				Name:      player.Name,
 				ClassID:   player.ClassID,
+				Language:  normalizeLanguage(player.Language),
 				Ready:     player.Ready,
 				Connected: player.Connected,
 			})
 		}
 	}
-	waitingOn := s.waitingOnLocked()
+	waitingOn := s.waitingOnForLocked(selfID)
 	presentation := s.phasePresentationLocked(selfID, waitingOn)
 	snap := &roomSnapshot{
 		SelfID:           selfID,
+		Language:         lang,
 		Seat:             s.playerSeatIndexLocked(selfID) + 1,
 		HostID:           s.hostID,
 		RoomAddr:         s.roomAddr,
 		Phase:            s.phase,
-		PhaseTitle:       phaseDisplayName(s.phase),
+		PhaseTitle:       phaseDisplayNameFor(lang, s.phase),
 		PhaseHint:        presentation.PhaseHint,
 		ControlLabel:     presentation.ControlLabel,
 		RoleNote:         presentation.RoleNote,
@@ -121,7 +125,7 @@ func (s *server) buildMapSnapshotLocked(selfID string) *mapSnapshot {
 		Party:         s.seatSnapshotsLocked(),
 		Reachable:     nodes,
 		VoteStatus:    s.mapVoteStatusLocked(selfID, reachable),
-		VoteSummary:   s.mapVoteSummaryLocked(reachable),
+		VoteSummary:   s.mapVoteSummaryForLocked(selfID, reachable),
 		Graph:         buildMapTreeSnapshot(s.run.Map),
 		History:       s.seatHistoryLocked(selfID, 8),
 	}
@@ -270,6 +274,10 @@ func buildCombatSnapshot(lib *content.Library, run *engine.RunState, combat *eng
 	if run == nil || combat == nil {
 		return nil
 	}
+	lang := i18n.DefaultLanguage
+	if player := players[selfID]; player != nil {
+		lang = normalizeLanguage(player.Language)
+	}
 	seatIndex := combatSnapshotSeatIndex(selfID, order)
 	party := buildCombatPartySnapshots(combat)
 	enemies := buildCombatEnemySnapshots(combat)
@@ -286,10 +294,10 @@ func buildCombatSnapshot(lib *content.Library, run *engine.RunState, combat *eng
 	for _, entry := range tailCombatLogs(combat.Log, 24) {
 		logs = append(logs, fmt.Sprintf("T%d %s", entry.Turn, entry.Text))
 	}
-	voteStatus := buildVoteStatus(order, players, combat.Coop.EndTurnVotes)
+	voteStatus := buildVoteStatus(lang, order, players, combat.Coop.EndTurnVotes)
 	highlights := []string{}
 	if coopCards := countSnapshotsWithBadge(hand, "CO-OP"); coopCards > 0 {
-		highlights = append(highlights, fmt.Sprintf("%d co-op card(s) are currently in hand.", coopCards))
+		highlights = append(highlights, fmt.Sprintf("当前手牌中有 %d 张协作牌。", coopCards))
 	}
 	energy, maxEnergy, drawCount, discardCount, exhaustCount, drawLines, discardLines, exhaustLines, effectLines := buildCombatSeatDetailSnapshot(lib, run, combat, seatIndex)
 	deckSize := combatSeatDeckSize(combat, run, seatIndex)
@@ -379,10 +387,10 @@ func (s *server) buildRewardSnapshotLocked(selfID string) *rewardSnapshot {
 		}
 	}
 	if coopCards := countSnapshotsWithBadge(cards, "CO-OP"); coopCards > 0 {
-		snap.Highlights = append(snap.Highlights, fmt.Sprintf("Reward pool contains %d co-op card choice(s).", coopCards))
+		snap.Highlights = append(snap.Highlights, fmt.Sprintf("奖励池中有 %d 张协作牌可选。", coopCards))
 	}
 	if slices.Contains(snap.RelicBadges, "CO-OP") {
-		snap.Highlights = append(snap.Highlights, "Reward relic is multiplayer-only.")
+		snap.Highlights = append(snap.Highlights, "该奖励遗物仅在多人模式生效。")
 	}
 	return snap
 }

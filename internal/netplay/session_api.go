@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cmdcards/internal/content"
+	"cmdcards/internal/i18n"
 )
 
 type Snapshot = roomSnapshot
@@ -29,6 +30,10 @@ type Session struct {
 }
 
 func StartHostedSession(lib *content.Library, port int, name, classID string, forceNew bool) (*Session, error) {
+	return StartHostedSessionWithLanguage(lib, port, name, classID, i18n.DefaultLanguage, forceNew)
+}
+
+func StartHostedSessionWithLanguage(lib *content.Library, port int, name, classID, language string, forceNew bool) (*Session, error) {
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	savePath, err := defaultRoomSavePath()
 	if err != nil {
@@ -49,11 +54,11 @@ func StartHostedSession(lib *content.Library, port int, name, classID string, fo
 			_ = srv.listener.Close()
 			return nil, fmt.Errorf("saved room belongs to host %q; use the same name or disable room restore", hostPlayer.Name)
 		}
-		srv.roomLog = append(srv.roomLog, "Saved room restored. Waiting for players to reconnect.")
+		srv.roomLog = append(srv.roomLog, "已恢复保存的房间，正在等待玩家重连。")
 	}
 	_ = srv.persistLocked()
 	go srv.serve()
-	session, err := startJoinedSessionWithRetry(fmt.Sprintf("127.0.0.1:%d", port), name, classID, 3*time.Second)
+	session, err := startJoinedSessionWithRetry(fmt.Sprintf("127.0.0.1:%d", port), name, classID, language, 3*time.Second)
 	if err != nil {
 		srv.mu.Lock()
 		srv.shutdownLocked(fmt.Sprintf("%s failed to enter the host session. Room saved for restore.", name))
@@ -66,29 +71,33 @@ func StartHostedSession(lib *content.Library, port int, name, classID string, fo
 }
 
 func StartJoinedSession(addr, name, classID string) (*Session, error) {
-	return startJoinedSession(addr, name, classID)
+	return StartJoinedSessionWithLanguage(addr, name, classID, i18n.DefaultLanguage)
 }
 
-func startJoinedSessionWithRetry(addr, name, classID string, timeout time.Duration) (*Session, error) {
+func StartJoinedSessionWithLanguage(addr, name, classID, language string) (*Session, error) {
+	return startJoinedSession(addr, name, classID, language)
+}
+
+func startJoinedSessionWithRetry(addr, name, classID, language string, timeout time.Duration) (*Session, error) {
 	conn, err := dialTCPWithRetry(addr, timeout)
 	if err != nil {
 		return nil, err
 	}
-	return startJoinedSessionOnConn(conn, name, classID)
+	return startJoinedSessionOnConn(conn, name, classID, language)
 }
 
-func startJoinedSession(addr, name, classID string) (*Session, error) {
+func startJoinedSession(addr, name, classID, language string) (*Session, error) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	return startJoinedSessionOnConn(conn, name, classID)
+	return startJoinedSessionOnConn(conn, name, classID, language)
 }
 
-func startJoinedSessionOnConn(conn net.Conn, name, classID string) (*Session, error) {
+func startJoinedSessionOnConn(conn net.Conn, name, classID, language string) (*Session, error) {
 	enc := json.NewEncoder(conn)
 	dec := json.NewDecoder(conn)
-	if err := enc.Encode(message{Type: "hello", Hello: &helloPayload{Name: name, ClassID: classID}}); err != nil {
+	if err := enc.Encode(message{Type: "hello", Hello: &helloPayload{Name: name, ClassID: classID, Language: normalizeLanguage(language)}}); err != nil {
 		_ = conn.Close()
 		return nil, err
 	}

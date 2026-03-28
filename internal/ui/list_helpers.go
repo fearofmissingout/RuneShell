@@ -106,9 +106,13 @@ func listPageWindow(length, selected, pageSize int) listPage {
 	}
 }
 
-func listPageSummary(length, selected int) string {
+func listPageSummary(theme Theme, length, selected int) string {
 	window := listPageWindow(length, selected, pagedListSize)
-	return fmt.Sprintf("第 %d/%d 页 · 共 %d 项", window.Page, window.TotalPages, length)
+	return theme.Textf("common.page_summary", map[string]any{
+		"page":  window.Page,
+		"pages": window.TotalPages,
+		"count": length,
+	})
 }
 
 func truncateASCII(line string, width int) string {

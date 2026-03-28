@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 	"cmdcards/internal/netplay"
 
 	"github.com/charmbracelet/lipgloss"
@@ -579,7 +580,7 @@ func renderMapPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState Mu
 	}
 	appendSectionTitle(&lines, theme, "队伍")
 	for _, actor := range snapshot.Map.Party {
-		text := combatActorTextClean(styledClassName(theme, actor.Name, actor.ClassID), actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, actor.Status)
+		text := combatActorTextClean(theme, styledClassName(theme, actor.Name, actor.ClassID), actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, actor.Status)
 		appendWrappedLine(&lines, theme, width, "- ", text)
 	}
 	appendSectionTitle(&lines, theme, "可达节点")
@@ -644,7 +645,7 @@ func renderCombatPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState
 			name += " [目标]"
 		}
 		partyItems = append(partyItems, selectableSectionItem{
-			Text:     combatActorTextClean(name, actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, actor.Status),
+			Text:     combatActorTextClean(theme, name, actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, actor.Status),
 			Selected: selected,
 		})
 	}
@@ -657,7 +658,7 @@ func renderCombatPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState
 			name += " [目标]"
 		}
 		enemyItems = append(enemyItems, selectableSectionItem{
-			Text:     combatEnemyTextClean(enemy.Index, name, enemy.HP, enemy.MaxHP, enemy.Block, enemy.Status, enemy.Intent),
+			Text:     combatEnemyTextClean(theme, enemy.Index, name, enemy.HP, enemy.MaxHP, enemy.Block, enemy.Status, enemy.Intent),
 			Selected: selected,
 		})
 	}
@@ -769,7 +770,7 @@ func renderRestPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatState M
 	}
 	lines = append(lines, theme.Subtitle.Render("篝火队伍状态"))
 	for _, actor := range snapshot.Rest.Party {
-		appendWrappedLine(&lines, theme, width, "- ", combatActorTextClean(styledClassName(theme, actor.Name, actor.ClassID), actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, actor.Status))
+		appendWrappedLine(&lines, theme, width, "- ", combatActorTextClean(theme, styledClassName(theme, actor.Name, actor.ClassID), actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, actor.Status))
 	}
 	return lines
 }
@@ -811,7 +812,7 @@ func renderSummaryPhaseLines(theme Theme, snapshot *netplay.Snapshot, combatStat
 		appendWrappedLine(&lines, theme, width, "选项: ", combatState.SelectionLabel)
 	}
 	for _, actor := range snapshot.Summary.Party {
-		appendWrappedLine(&lines, theme, width, "- ", combatActorTextClean(styledClassName(theme, actor.Name, actor.ClassID), actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, actor.Status))
+		appendWrappedLine(&lines, theme, width, "- ", combatActorTextClean(theme, styledClassName(theme, actor.Name, actor.ClassID), actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, actor.Status))
 	}
 	return lines
 }
@@ -1329,7 +1330,7 @@ func renderMultiplayerCombatTopSummary(theme Theme, snapshot *netplay.Snapshot, 
 	inspectPane := clampSelection(combatState.InspectPane, MultiplayerCombatInspectPaneCount)
 	details := []string{
 		fmt.Sprintf("\u62bd\u724c\u5806 %d | \u5f03\u724c\u5806 %d | \u6d88\u8017\u5806 %d", snapshot.Combat.DrawCount, snapshot.Combat.DiscardCount, snapshot.Combat.ExhaustCount),
-		fmt.Sprintf("\u68c0\u89c6\u9875: %s", localizedCombatInspectPaneName(inspectPane)),
+		theme.Textf("combat.inspect.current_page", i18n.Args{"name": localizedCombatInspectPaneName(theme, inspectPane)}),
 	}
 	for _, pending := range snapshot.Combat.PendingRepeats {
 		details = append(details, "\u8fde\u53d1\u5f85\u673a | "+pending)

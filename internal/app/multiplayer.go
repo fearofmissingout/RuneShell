@@ -266,36 +266,36 @@ func (m model) updateMultiplayerJoin(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) launchMultiplayerHost() (tea.Model, tea.Cmd) {
 	name := strings.TrimSpace(m.multiplayerCreateName.Value())
 	if name == "" {
-		m.message = "Please enter your name first so other players can recognize you in the room."
+		m.message = m.theme.Text("message.multiplayer.name_required")
 		return m, clearMessage()
 	}
 	portText := strings.TrimSpace(m.multiplayerCreatePort.Value())
 	port, err := strconv.Atoi(portText)
 	if err != nil || port < 1 || port > 65535 {
-		m.message = "Port must be a number between 1 and 65535, for example 7777."
+		m.message = m.theme.Text("message.multiplayer.port_invalid")
 		return m, clearMessage()
 	}
 	class := m.classes[m.multiplayerCreateClass]
 	m.multiplayerConnecting = true
-	m.message = "Creating the room and connecting..."
-	return m, startHostedSessionCmd(m.lib, port, name, class.ID, m.multiplayerCreateForceNew)
+	m.message = m.theme.Text("message.multiplayer.creating_room")
+	return m, startHostedSessionCmd(m.lib, port, name, class.ID, m.profile.Language, m.multiplayerCreateForceNew)
 }
 
 func (m model) launchMultiplayerJoin() (tea.Model, tea.Cmd) {
 	addr := strings.TrimSpace(m.multiplayerJoinAddr.Value())
 	if addr == "" {
-		m.message = "Please enter a room address first, for example 127.0.0.1:7777."
+		m.message = m.theme.Text("message.multiplayer.addr_required")
 		return m, clearMessage()
 	}
 	name := strings.TrimSpace(m.multiplayerJoinName.Value())
 	if name == "" {
-		m.message = "Please enter your name first. Use the same name again if you reconnect."
+		m.message = m.theme.Text("message.multiplayer.reconnect_name")
 		return m, clearMessage()
 	}
 	class := m.classes[m.multiplayerJoinClass]
 	m.multiplayerConnecting = true
-	m.message = "Joining the room..."
-	return m, startJoinedSessionCmd(addr, name, class.ID)
+	m.message = m.theme.Text("message.multiplayer.joining_room")
+	return m, startJoinedSessionCmd(addr, name, class.ID, m.profile.Language)
 }
 
 func multiplayerCreateLines(m model) []string {
@@ -355,9 +355,9 @@ func multiplayerJoinHelp(m model) []string {
 	}
 }
 
-func startHostedSessionCmd(lib *content.Library, port int, name, classID string, forceNew bool) tea.Cmd {
+func startHostedSessionCmd(lib *content.Library, port int, name, classID, language string, forceNew bool) tea.Cmd {
 	return func() tea.Msg {
-		session, err := netplay.StartHostedSession(lib, port, name, classID, forceNew)
+		session, err := netplay.StartHostedSessionWithLanguage(lib, port, name, classID, language, forceNew)
 		if err != nil {
 			return multiplayerConnectedMsg{err: err}
 		}
@@ -365,9 +365,9 @@ func startHostedSessionCmd(lib *content.Library, port int, name, classID string,
 	}
 }
 
-func startJoinedSessionCmd(addr, name, classID string) tea.Cmd {
+func startJoinedSessionCmd(addr, name, classID, language string) tea.Cmd {
 	return func() tea.Msg {
-		session, err := netplay.StartJoinedSession(addr, name, classID)
+		session, err := netplay.StartJoinedSessionWithLanguage(addr, name, classID, language)
 		if err != nil {
 			return multiplayerConnectedMsg{err: err}
 		}
@@ -651,26 +651,26 @@ func (m model) multiplayerCombatTargetLabel() string {
 	case engine.CombatTargetEnemy:
 		for _, enemy := range combat.Enemies {
 			if enemy.Index == state.Index {
-				return fmt.Sprintf("敌人 %d %s", enemy.Index, enemy.Name)
+				return m.theme.Textf("multiplayer.target.enemy_named", i18n.Args{"index": enemy.Index, "name": enemy.Name})
 			}
 		}
-		return fmt.Sprintf("敌人 %d", state.Index)
+		return m.theme.Textf("multiplayer.target.enemy", i18n.Args{"index": state.Index})
 	case engine.CombatTargetAlly:
 		for _, actor := range combat.Party {
 			if actor.Index == state.Index {
 				if actor.Index == 1 {
-					return fmt.Sprintf("自己 %s", actor.Name)
+					return m.theme.Textf("multiplayer.target.self_named", i18n.Args{"name": actor.Name})
 				}
-				return fmt.Sprintf("队友 %d %s", actor.Index, actor.Name)
+				return m.theme.Textf("multiplayer.target.ally_named", i18n.Args{"index": actor.Index, "name": actor.Name})
 			}
 		}
-		return fmt.Sprintf("队友 %d", state.Index)
+		return m.theme.Textf("multiplayer.target.ally", i18n.Args{"index": state.Index})
 	case engine.CombatTargetEnemies:
-		return "全体敌人"
+		return m.theme.Text("multiplayer.target.all_enemies")
 	case engine.CombatTargetAllies:
-		return "全体队友"
+		return m.theme.Text("multiplayer.target.all_allies")
 	default:
-		return "无需目标"
+		return m.theme.Text("multiplayer.target.none")
 	}
 }
 
@@ -690,9 +690,9 @@ func (m model) multiplayerCombatRenderState() ui.MultiplayerCombatState {
 	state.Phase = multiplayerSnapshotPhase(m.multiplayerSnapshot)
 	state.SelectionLabel = m.multiplayerStructuredSelectionLabel()
 	if m.multiplayerCombatMode == multiplayerCombatModePotion {
-		state.ModeLabel = "药水"
+		state.ModeLabel = m.theme.Text("combat.mode.potion")
 	} else {
-		state.ModeLabel = "手牌"
+		state.ModeLabel = m.theme.Text("combat.mode.hand")
 	}
 	state.SelectedCard = m.multiplayerCombatIndex
 	state.SelectedPotion = m.multiplayerPotionIndex
@@ -710,37 +710,37 @@ func (m model) multiplayerStructuredSelectionLabel() string {
 	switch {
 	case m.multiplayerSnapshot.Map != nil && len(m.multiplayerSnapshot.Map.Reachable) > 0:
 		node := m.multiplayerSnapshot.Map.Reachable[clampMultiplayerActionIndex(index, len(m.multiplayerSnapshot.Map.Reachable))]
-		return fmt.Sprintf("节点 %d: %s", node.Index, node.Label)
+		return m.theme.Textf("multiplayer.selection.node", i18n.Args{"index": node.Index, "label": node.Label})
 	case m.multiplayerSnapshot.Reward != nil && len(m.multiplayerSnapshot.Reward.Cards) > 0:
 		card := m.multiplayerSnapshot.Reward.Cards[clampMultiplayerActionIndex(index, len(m.multiplayerSnapshot.Reward.Cards))]
-		return fmt.Sprintf("奖励卡 %s", card.Name)
+		return m.theme.Textf("multiplayer.selection.reward_card", i18n.Args{"name": card.Name})
 	case m.multiplayerSnapshot.Event != nil && len(m.multiplayerSnapshot.Event.Choices) > 0:
 		choice := m.multiplayerSnapshot.Event.Choices[clampMultiplayerActionIndex(index, len(m.multiplayerSnapshot.Event.Choices))]
-		return fmt.Sprintf("事件选项 %s", choice.Label)
+		return m.theme.Textf("multiplayer.selection.event_choice", i18n.Args{"label": choice.Label})
 	case m.multiplayerSnapshot.Shop != nil && len(m.multiplayerSnapshot.Shop.Offers) > 0:
 		offer := m.multiplayerSnapshot.Shop.Offers[clampMultiplayerActionIndex(index, len(m.multiplayerSnapshot.Shop.Offers))]
-		return fmt.Sprintf("商店商品 %s", offer.Name)
+		return m.theme.Textf("multiplayer.selection.shop_offer", i18n.Args{"name": offer.Name})
 	case m.multiplayerSnapshot.Rest != nil:
 		if index == 1 {
-			return "营火强化"
+			return m.theme.Text("multiplayer.selection.rest_upgrade")
 		}
-		return "营火休息"
+		return m.theme.Text("multiplayer.selection.rest_heal")
 	case m.multiplayerSnapshot.Equipment != nil:
 		if index == 1 {
-			return "跳过装备"
+			return m.theme.Text("multiplayer.selection.equipment_skip")
 		}
-		return "装备候选物品"
+		return m.theme.Text("multiplayer.selection.equipment_take")
 	case m.multiplayerSnapshot.Deck != nil:
 		if len(m.multiplayerSnapshot.Deck.Cards) == 0 {
-			return "返回上一层"
+			return m.theme.Text("multiplayer.selection.deck_back")
 		}
 		card := m.multiplayerSnapshot.Deck.Cards[clampMultiplayerActionIndex(index, len(m.multiplayerSnapshot.Deck.Cards))]
-		return fmt.Sprintf("卡牌 %s", card.Name)
+		return m.theme.Textf("multiplayer.selection.deck_card", i18n.Args{"name": card.Name})
 	case m.multiplayerSnapshot.Summary != nil:
 		if index == 1 {
-			return "结束房间"
+			return m.theme.Text("multiplayer.selection.summary_close")
 		}
-		return "开始下一局"
+		return m.theme.Text("multiplayer.selection.summary_new_run")
 	default:
 		return ""
 	}
@@ -748,12 +748,12 @@ func (m model) multiplayerStructuredSelectionLabel() string {
 
 func (m model) buildSelectedMultiplayerCombatCommand() (*netplay.Command, error) {
 	if !m.multiplayerUsesCombatControls() {
-		return nil, fmt.Errorf("当前不在联机战斗阶段")
+		return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.not_in_combat"))
 	}
 	combat := m.multiplayerSnapshot.Combat
 	if m.multiplayerCombatMode == multiplayerCombatModePotion {
 		if len(combat.Potions) == 0 {
-			return nil, fmt.Errorf("当前没有可用药水")
+			return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.no_potions"))
 		}
 		cmd := &netplay.Command{Action: "potion", ItemIndex: m.multiplayerPotionIndex + 1}
 		kind := m.multiplayerCurrentCombatTargetKind()
@@ -764,7 +764,7 @@ func (m model) buildSelectedMultiplayerCombatCommand() (*netplay.Command, error)
 		return cmd, nil
 	}
 	if len(combat.Hand) == 0 {
-		return nil, fmt.Errorf("当前没有可打出的手牌")
+		return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.no_hand"))
 	}
 	card := combat.Hand[clampMultiplayerActionIndex(m.multiplayerCombatIndex, len(combat.Hand))]
 	cmd := &netplay.Command{Action: "play", CardIndex: card.Index}
@@ -780,7 +780,7 @@ func (m model) buildSelectedMultiplayerCombatCommand() (*netplay.Command, error)
 
 func (m model) buildSelectedStructuredMultiplayerCommand() (*netplay.Command, error) {
 	if !m.multiplayerUsesStructuredControls() {
-		return nil, fmt.Errorf("当前阶段还没有可直接执行的结构化操作")
+		return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.no_structured_action"))
 	}
 	if m.multiplayerUsesCombatControls() {
 		return m.buildSelectedMultiplayerCombatCommand()
@@ -789,22 +789,22 @@ func (m model) buildSelectedStructuredMultiplayerCommand() (*netplay.Command, er
 	switch {
 	case m.multiplayerSnapshot.Map != nil:
 		if len(m.multiplayerSnapshot.Map.Reachable) == 0 {
-			return nil, fmt.Errorf("当前没有可前往的节点")
+			return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.no_nodes"))
 		}
 		return &netplay.Command{Action: "node", ItemIndex: index + 1}, nil
 	case m.multiplayerSnapshot.Reward != nil:
 		if len(m.multiplayerSnapshot.Reward.Cards) == 0 {
-			return nil, fmt.Errorf("当前没有可领取的奖励卡")
+			return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.no_reward_cards"))
 		}
 		return &netplay.Command{Action: "take", ItemIndex: index + 1}, nil
 	case m.multiplayerSnapshot.Event != nil:
 		if len(m.multiplayerSnapshot.Event.Choices) == 0 {
-			return nil, fmt.Errorf("当前没有可选事件")
+			return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.no_event_choices"))
 		}
 		return &netplay.Command{Action: "choose", ItemIndex: index + 1}, nil
 	case m.multiplayerSnapshot.Shop != nil:
 		if len(m.multiplayerSnapshot.Shop.Offers) == 0 {
-			return nil, fmt.Errorf("当前没有可购买的商品")
+			return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.no_shop_offers"))
 		}
 		return &netplay.Command{Action: "buy", ItemIndex: index + 1}, nil
 	case m.multiplayerSnapshot.Rest != nil:
@@ -831,7 +831,7 @@ func (m model) buildSelectedStructuredMultiplayerCommand() (*netplay.Command, er
 		}
 		return &netplay.Command{Action: action}, nil
 	default:
-		return nil, fmt.Errorf("当前阶段暂不支持结构化操作")
+		return nil, fmt.Errorf("%s", m.theme.Text("multiplayer.error.unsupported_structured"))
 	}
 }
 
@@ -839,11 +839,11 @@ func (m model) sendMultiplayerCommand(cmd *netplay.Command) (tea.Model, tea.Cmd)
 	if cmd == nil {
 		return m, nil
 	}
-	if blocked, clear := m.blockRapidAction("操作过快，请稍候再提交。"); blocked {
+	if blocked, clear := m.blockRapidAction(m.theme.Text("multiplayer.message.action_too_fast")); blocked {
 		return m, clear
 	}
 	if m.multiplayerSession == nil {
-		m.message = "房间连接尚未就绪，请稍后再试。"
+		m.message = m.theme.Text("multiplayer.message.session_not_ready")
 		return m, clearMessage()
 	}
 	if err := m.multiplayerSession.Send(cmd); err != nil {
@@ -898,7 +898,7 @@ func (m model) updateMultiplayerCombatControls(msg tea.KeyMsg) (tea.Model, tea.C
 		return m, nil
 	case key.Matches(msg, m.keys.Potion):
 		if len(m.multiplayerSnapshot.Combat.Potions) == 0 {
-			m.message = "当前没有药水可用。"
+			m.message = m.theme.Text("multiplayer.message.no_potion_available")
 			return m, clearMessage()
 		}
 		if m.multiplayerCombatMode == multiplayerCombatModePotion {
@@ -1007,7 +1007,7 @@ func (m model) updateMultiplayerInspectControls(msg tea.KeyMsg) (tea.Model, tea.
 	return m, nil
 }
 
-func multiplayerQuickActions(snapshot *netplay.Snapshot) []multiplayerQuickAction {
+func multiplayerQuickActions(theme ui.Theme, snapshot *netplay.Snapshot) []multiplayerQuickAction {
 	if snapshot == nil {
 		return nil
 	}
@@ -1025,7 +1025,7 @@ func multiplayerQuickActions(snapshot *netplay.Snapshot) []multiplayerQuickActio
 			seen[item] = struct{}{}
 			hostOnly := isHostOnlyMultiplayerAction(snapshot, item)
 			actions = append(actions, multiplayerQuickAction{
-				Label:    formatMultiplayerActionLabel(snapshot, describeMultiplayerAction(snapshot, item), hostOnly),
+				Label:    formatMultiplayerActionLabel(theme, snapshot, describeMultiplayerAction(theme, snapshot, item), hostOnly),
 				Command:  item,
 				Template: isTemplateMultiplayerAction(item),
 				HostOnly: hostOnly,
@@ -1056,14 +1056,14 @@ func isMultiplayerHost(snapshot *netplay.Snapshot) bool {
 	return snapshot.SelfID != "" && snapshot.SelfID == snapshot.HostID
 }
 
-func formatMultiplayerActionLabel(snapshot *netplay.Snapshot, label string, hostOnly bool) string {
+func formatMultiplayerActionLabel(theme ui.Theme, snapshot *netplay.Snapshot, label string, hostOnly bool) string {
 	if !hostOnly || strings.TrimSpace(label) == "" {
 		return label
 	}
 	if isMultiplayerHost(snapshot) {
-		return "Host only: " + label
+		return theme.Textf("multiplayer.action.host_only", i18n.Args{"label": label})
 	}
-	return "Host only (locked): " + label
+	return theme.Textf("multiplayer.action.host_only_locked", i18n.Args{"label": label})
 }
 
 func isHostOnlyMultiplayerAction(snapshot *netplay.Snapshot, command string) bool {
@@ -1098,7 +1098,7 @@ func isHostOnlyMultiplayerAction(snapshot *netplay.Snapshot, command string) boo
 	return false
 }
 
-func describeMultiplayerAction(snapshot *netplay.Snapshot, command string) string {
+func describeMultiplayerAction(theme ui.Theme, snapshot *netplay.Snapshot, command string) string {
 	fields := strings.Fields(strings.TrimSpace(command))
 	if len(fields) == 0 {
 		return command
@@ -1107,108 +1107,108 @@ func describeMultiplayerAction(snapshot *netplay.Snapshot, command string) strin
 	phase := multiplayerSnapshotPhase(snapshot)
 	switch verb {
 	case "quit", "exit":
-		return "Leave the current room"
+		return theme.Text("multiplayer.action.leave_room")
 	case "ready":
-		return "Mark yourself ready"
+		return theme.Text("multiplayer.action.ready")
 	case "start":
-		return "Start this run"
+		return theme.Text("multiplayer.action.start_run")
 	case "mode":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
 			mode := fields[1]
 			if strings.EqualFold(mode, "story") {
-				mode = "Story"
+				mode = theme.Text("mode.story")
 			} else if strings.EqualFold(mode, "endless") {
-				mode = "Endless"
+				mode = theme.Text("mode.endless")
 			}
-			return fmt.Sprintf("Switch room mode to %s", mode)
+			return theme.Textf("multiplayer.action.switch_mode_to", i18n.Args{"mode": mode})
 		}
-		return "Switch room mode"
+		return theme.Text("multiplayer.action.switch_mode")
 	case "seed":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return fmt.Sprintf("Set room seed to %s", fields[1])
+			return theme.Textf("multiplayer.action.set_seed_to", i18n.Args{"seed": fields[1]})
 		}
-		return "Set room seed"
+		return theme.Text("multiplayer.action.set_seed")
 	case "class":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return fmt.Sprintf("Switch class to %s", fields[1])
+			return theme.Textf("multiplayer.action.switch_class_to", i18n.Args{"class": fields[1]})
 		}
-		return "Switch class"
+		return theme.Text("multiplayer.action.switch_class")
 	case "drop":
 		if len(fields) >= 2 && strings.EqualFold(fields[1], "all") {
-			return "Clear all disconnected seats"
+			return theme.Text("multiplayer.action.drop_all")
 		}
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return fmt.Sprintf("Clear disconnected seat %s", fields[1])
+			return theme.Textf("multiplayer.action.drop_seat", i18n.Args{"seat": fields[1]})
 		}
-		return "Clear disconnected seats"
+		return theme.Text("multiplayer.action.drop")
 	case "chat", "say":
 		text := strings.TrimSpace(strings.TrimPrefix(command, fields[0]))
 		if text == "" || strings.Contains(text, "<") {
-			return "Send chat message"
+			return theme.Text("multiplayer.action.chat")
 		}
-		return fmt.Sprintf("Send chat: %s", text)
+		return theme.Textf("multiplayer.action.chat_text", i18n.Args{"text": text})
 	case "node":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return describeMapAction(snapshot, fields[1])
+			return describeMapAction(theme, snapshot, fields[1])
 		}
-		return "Choose the next map node"
+		return theme.Text("multiplayer.action.choose_node")
 	case "play":
-		return describeCombatPlayAction(snapshot, fields)
+		return describeCombatPlayAction(theme, snapshot, fields)
 	case "potion":
-		return describeCombatPotionAction(snapshot, fields)
+		return describeCombatPotionAction(theme, snapshot, fields)
 	case "end":
-		return "End this turn and submit your vote"
+		return theme.Text("multiplayer.action.end_turn")
 	case "take":
 		switch phase {
 		case "reward":
 			if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-				return describeRewardTakeAction(snapshot, fields[1])
+				return describeRewardTakeAction(theme, snapshot, fields[1])
 			}
-			return "Take reward"
+			return theme.Text("multiplayer.action.take_reward")
 		case "equipment":
-			return "Take the candidate equipment"
+			return theme.Text("multiplayer.action.take_equipment")
 		default:
-			return "Confirm take"
+			return theme.Text("multiplayer.action.take")
 		}
 	case "skip":
 		switch phase {
 		case "reward":
-			return "Skip reward"
+			return theme.Text("multiplayer.action.skip_reward")
 		case "equipment":
-			return "Skip equipment"
+			return theme.Text("multiplayer.action.skip_equipment")
 		default:
-			return "Skip current choice"
+			return theme.Text("multiplayer.action.skip")
 		}
 	case "choose":
-		return describeChooseAction(snapshot, fields)
+		return describeChooseAction(theme, snapshot, fields)
 	case "buy":
-		return describeShopBuyAction(snapshot, fields)
+		return describeShopBuyAction(theme, snapshot, fields)
 	case "leave":
-		return "Leave the shop"
+		return theme.Text("multiplayer.action.leave_shop")
 	case "heal":
-		return "Rest at the campfire"
+		return theme.Text("multiplayer.action.rest")
 	case "upgrade":
-		return "Upgrade a card at the campfire"
+		return theme.Text("multiplayer.action.upgrade")
 	case "back":
-		return "Return to the previous selection"
+		return theme.Text("multiplayer.action.back")
 	case "new":
-		return "Start a new run"
+		return theme.Text("multiplayer.action.new_run")
 	case "abandon":
 		if phase == "summary" {
-			return "Close the room and end the run"
+			return theme.Text("multiplayer.action.close_room")
 		}
-		return "Abandon the current room"
+		return theme.Text("multiplayer.action.abandon_room")
 	case "host":
 		if len(fields) >= 2 && !isTemplateMultiplayerAction(command) {
-			return fmt.Sprintf("Transfer host authority to seat %s", fields[1])
+			return theme.Textf("multiplayer.action.transfer_host_to", i18n.Args{"seat": fields[1]})
 		}
-		return "Transfer host authority"
+		return theme.Text("multiplayer.action.transfer_host")
 	case "accept-host":
-		return "Accept host authority"
+		return theme.Text("multiplayer.action.accept_host")
 	case "deny-host":
-		return "Decline host authority"
+		return theme.Text("multiplayer.action.deny_host")
 	case "cancel-host":
-		return "Cancel host transfer"
+		return theme.Text("multiplayer.action.cancel_host")
 	default:
 		return command
 	}
@@ -1244,22 +1244,22 @@ func multiplayerSnapshotPhase(snapshot *netplay.Snapshot) string {
 	}
 }
 
-func describeMapAction(snapshot *netplay.Snapshot, indexText string) string {
+func describeMapAction(theme ui.Theme, snapshot *netplay.Snapshot, indexText string) string {
 	if snapshot != nil && snapshot.Map != nil {
 		for _, node := range snapshot.Map.Reachable {
 			if fmt.Sprintf("%d", node.Index) == indexText {
-				return fmt.Sprintf("Go to node %s: %s", indexText, node.Label)
+				return theme.Textf("multiplayer.action.go_node_named", i18n.Args{"index": indexText, "label": node.Label})
 			}
 		}
 	}
-	return fmt.Sprintf("Go to node %s", indexText)
+	return theme.Textf("multiplayer.action.go_node", i18n.Args{"index": indexText})
 }
 
-func describeCombatPlayAction(snapshot *netplay.Snapshot, fields []string) string {
+func describeCombatPlayAction(theme ui.Theme, snapshot *netplay.Snapshot, fields []string) string {
 	if len(fields) < 2 || isTemplateMultiplayerAction(strings.Join(fields, " ")) {
-		return "Play a card"
+		return theme.Text("multiplayer.action.play")
 	}
-	cardName := fmt.Sprintf("Card %s", fields[1])
+	cardName := theme.Textf("multiplayer.action.card_slot", i18n.Args{"index": fields[1]})
 	if snapshot != nil && snapshot.Combat != nil {
 		for _, card := range snapshot.Combat.Hand {
 			if fmt.Sprintf("%d", card.Index) == fields[1] {
@@ -1269,74 +1269,74 @@ func describeCombatPlayAction(snapshot *netplay.Snapshot, fields []string) strin
 		}
 	}
 	if len(fields) >= 4 {
-		return fmt.Sprintf("Play %s -> %s", cardName, describeCombatTarget(snapshot, fields[2], fields[3]))
+		return theme.Textf("multiplayer.action.play_targeted", i18n.Args{"card": cardName, "target": describeCombatTarget(theme, snapshot, fields[2], fields[3])})
 	}
-	return fmt.Sprintf("Play %s", cardName)
+	return theme.Textf("multiplayer.action.play_named", i18n.Args{"card": cardName})
 }
 
-func describeCombatPotionAction(snapshot *netplay.Snapshot, fields []string) string {
+func describeCombatPotionAction(theme ui.Theme, snapshot *netplay.Snapshot, fields []string) string {
 	if len(fields) < 2 || isTemplateMultiplayerAction(strings.Join(fields, " ")) {
-		return "Use a potion"
+		return theme.Text("multiplayer.action.use_potion")
 	}
-	potionLabel := "Potion slot " + fields[1]
+	potionLabel := theme.Textf("multiplayer.action.potion_slot", i18n.Args{"index": fields[1]})
 	if snapshot != nil && snapshot.Combat != nil {
 		if slot, err := strconv.Atoi(fields[1]); err == nil && slot >= 1 && slot <= len(snapshot.Combat.Potions) {
 			name := strings.TrimSpace(snapshot.Combat.Potions[slot-1])
 			if name != "" {
-				potionLabel = "Potion " + name
+				potionLabel = theme.Textf("multiplayer.action.potion_named", i18n.Args{"name": name})
 			}
 		}
 	}
 	target := ""
 	if len(fields) >= 4 {
-		target = " -> " + describeCombatTarget(snapshot, fields[2], fields[3])
+		target = theme.Textf("multiplayer.action.target_suffix", i18n.Args{"target": describeCombatTarget(theme, snapshot, fields[2], fields[3])})
 	}
-	return fmt.Sprintf("Use %s%s", potionLabel, target)
+	return theme.Textf("multiplayer.action.use_potion_named", i18n.Args{"potion": potionLabel, "target": target})
 }
 
-func describeCombatTarget(snapshot *netplay.Snapshot, kind string, indexText string) string {
+func describeCombatTarget(theme ui.Theme, snapshot *netplay.Snapshot, kind string, indexText string) string {
 	if snapshot != nil && snapshot.Combat != nil {
 		switch strings.ToLower(kind) {
 		case "enemy":
 			for _, enemy := range snapshot.Combat.Enemies {
 				if fmt.Sprintf("%d", enemy.Index) == indexText {
-					return fmt.Sprintf("enemy %s %s", indexText, enemy.Name)
+					return theme.Textf("multiplayer.target.enemy_named", i18n.Args{"index": indexText, "name": enemy.Name})
 				}
 			}
 		case "ally":
 			for _, actor := range snapshot.Combat.Party {
 				if fmt.Sprintf("%d", actor.Index) == indexText {
-					return fmt.Sprintf("ally %s %s", indexText, actor.Name)
+					return theme.Textf("multiplayer.target.ally_named", i18n.Args{"index": indexText, "name": actor.Name})
 				}
 			}
 		}
 	}
 	if strings.EqualFold(kind, "ally") {
-		return fmt.Sprintf("ally %s", indexText)
+		return theme.Textf("multiplayer.target.ally", i18n.Args{"index": indexText})
 	}
-	return fmt.Sprintf("enemy %s", indexText)
+	return theme.Textf("multiplayer.target.enemy", i18n.Args{"index": indexText})
 }
 
-func describeRewardTakeAction(snapshot *netplay.Snapshot, indexText string) string {
+func describeRewardTakeAction(theme ui.Theme, snapshot *netplay.Snapshot, indexText string) string {
 	if snapshot != nil && snapshot.Reward != nil {
 		for _, card := range snapshot.Reward.Cards {
 			if fmt.Sprintf("%d", card.Index) == indexText {
-				return fmt.Sprintf("Take reward card %s", card.Name)
+				return theme.Textf("multiplayer.action.take_reward_card", i18n.Args{"card": card.Name})
 			}
 		}
 	}
-	return fmt.Sprintf("Take reward %s", indexText)
+	return theme.Textf("multiplayer.action.take_reward_index", i18n.Args{"index": indexText})
 }
 
-func describeChooseAction(snapshot *netplay.Snapshot, fields []string) string {
+func describeChooseAction(theme ui.Theme, snapshot *netplay.Snapshot, fields []string) string {
 	if len(fields) < 2 || isTemplateMultiplayerAction(strings.Join(fields, " ")) {
 		switch multiplayerSnapshotPhase(snapshot) {
 		case "event":
-			return "Choose an event option"
+			return theme.Text("multiplayer.action.choose_event")
 		case "deck_action":
-			return "Choose a deck target"
+			return theme.Text("multiplayer.action.choose_deck")
 		default:
-			return "Choose the current option"
+			return theme.Text("multiplayer.action.choose")
 		}
 	}
 	indexText := fields[1]
@@ -1345,38 +1345,38 @@ func describeChooseAction(snapshot *netplay.Snapshot, fields []string) string {
 		if snapshot != nil && snapshot.Event != nil {
 			for _, choice := range snapshot.Event.Choices {
 				if fmt.Sprintf("%d", choice.Index) == indexText {
-					return fmt.Sprintf("Choose event %s: %s", indexText, choice.Label)
+					return theme.Textf("multiplayer.action.choose_event_named", i18n.Args{"index": indexText, "label": choice.Label})
 				}
 			}
 		}
-		return fmt.Sprintf("Choose event option %s", indexText)
+		return theme.Textf("multiplayer.action.choose_event_index", i18n.Args{"index": indexText})
 	case "deck_action":
 		if snapshot != nil && snapshot.Deck != nil {
 			for _, card := range snapshot.Deck.Cards {
 				if fmt.Sprintf("%d", card.Index) == indexText {
-					return fmt.Sprintf("Choose card %s: %s", indexText, card.Name)
+					return theme.Textf("multiplayer.action.choose_card_named", i18n.Args{"index": indexText, "card": card.Name})
 				}
 			}
 		}
-		return fmt.Sprintf("Choose card %s", indexText)
+		return theme.Textf("multiplayer.action.choose_card", i18n.Args{"index": indexText})
 	default:
-		return fmt.Sprintf("Choose option %s", indexText)
+		return theme.Textf("multiplayer.action.choose_option", i18n.Args{"index": indexText})
 	}
 }
 
-func describeShopBuyAction(snapshot *netplay.Snapshot, fields []string) string {
+func describeShopBuyAction(theme ui.Theme, snapshot *netplay.Snapshot, fields []string) string {
 	if len(fields) < 2 || isTemplateMultiplayerAction(strings.Join(fields, " ")) {
-		return "Buy a shop item"
+		return theme.Text("multiplayer.action.buy")
 	}
 	indexText := fields[1]
 	if snapshot != nil && snapshot.Shop != nil {
 		for _, offer := range snapshot.Shop.Offers {
 			if fmt.Sprintf("%d", offer.Index) == indexText {
-				return fmt.Sprintf("Buy %s (%d gold)", offer.Name, offer.Price)
+				return theme.Textf("multiplayer.action.buy_named", i18n.Args{"name": offer.Name, "price": offer.Price})
 			}
 		}
 	}
-	return fmt.Sprintf("Buy shop item %s", indexText)
+	return theme.Textf("multiplayer.action.buy_index", i18n.Args{"index": indexText})
 }
 
 func clampMultiplayerActionIndex(selected, length int) int {
@@ -1395,7 +1395,7 @@ func clampMultiplayerActionIndex(selected, length int) int {
 func (m *model) syncMultiplayerRoomSelection() {
 	m.syncMultiplayerCombatSelection()
 	m.syncMultiplayerStructuredSelection()
-	actions := multiplayerQuickActions(m.multiplayerSnapshot)
+	actions := multiplayerQuickActions(m.theme, m.multiplayerSnapshot)
 	if m.multiplayerUsesCombatControls() {
 		m.multiplayerActionIndex = 0
 		if m.multiplayerRoomFocus != multiplayerRoomFocusInput && m.multiplayerRoomFocus != multiplayerRoomFocusInspect {
@@ -1461,7 +1461,7 @@ func (m *model) toggleMultiplayerRoomFocus() {
 		m.multiplayerCommandInput.Blur()
 		return
 	}
-	actions := multiplayerQuickActions(m.multiplayerSnapshot)
+	actions := multiplayerQuickActions(m.theme, m.multiplayerSnapshot)
 	if len(actions) == 0 {
 		m.multiplayerRoomFocus = multiplayerRoomFocusInput
 		m.multiplayerCommandInput.Focus()
@@ -1490,7 +1490,7 @@ func (m model) submitMultiplayerCommand(line string) (tea.Model, tea.Cmd) {
 		m.closeMultiplayerSession()
 		m.screen = screenMultiplayerMenu
 		m.index = 0
-		m.message = "已离开当前房间。"
+		m.message = m.theme.Text("multiplayer.message.left_room")
 		return m, clearMessage()
 	}
 	next, command := m.sendMultiplayerCommand(cmd)
@@ -1503,7 +1503,7 @@ func (m model) submitMultiplayerCommand(line string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) applySelectedMultiplayerAction() (tea.Model, tea.Cmd) {
-	actions := multiplayerQuickActions(m.multiplayerSnapshot)
+	actions := multiplayerQuickActions(m.theme, m.multiplayerSnapshot)
 	if len(actions) == 0 {
 		return m, nil
 	}
@@ -1513,7 +1513,7 @@ func (m model) applySelectedMultiplayerAction() (tea.Model, tea.Cmd) {
 		m.multiplayerCommandInput.SetValue(action.Command)
 		m.multiplayerCommandInput.CursorEnd()
 		m.multiplayerCommandInput.Focus()
-		m.message = "已把命令模板放到输入框，补全参数后回车发送。"
+		m.message = m.theme.Text("multiplayer.message.template_loaded")
 		return m, clearMessage()
 	}
 	return m.submitMultiplayerCommand(action.Command)
@@ -1525,7 +1525,7 @@ func (m model) updateMultiplayerRoom(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.closeMultiplayerSession()
 		m.screen = screenMultiplayerMenu
 		m.index = 0
-		m.message = "已离开当前房间。"
+		m.message = m.theme.Text("multiplayer.message.left_room")
 		return m, clearMessage()
 	case key.Matches(msg, m.keys.Cycle):
 		m.toggleMultiplayerRoomFocus()
@@ -1537,11 +1537,11 @@ func (m model) updateMultiplayerRoom(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case m.multiplayerUsesStructuredControls() && m.multiplayerRoomFocus == multiplayerRoomFocusActions:
 		return m.updateMultiplayerStructuredControls(msg)
 	case m.multiplayerRoomFocus == multiplayerRoomFocusActions && key.Matches(msg, m.keys.Up):
-		actions := multiplayerQuickActions(m.multiplayerSnapshot)
+		actions := multiplayerQuickActions(m.theme, m.multiplayerSnapshot)
 		m.multiplayerActionIndex = moveClamped(m.multiplayerActionIndex, len(actions), -1)
 		return m, nil
 	case m.multiplayerRoomFocus == multiplayerRoomFocusActions && key.Matches(msg, m.keys.Down):
-		actions := multiplayerQuickActions(m.multiplayerSnapshot)
+		actions := multiplayerQuickActions(m.theme, m.multiplayerSnapshot)
 		m.multiplayerActionIndex = moveClamped(m.multiplayerActionIndex, len(actions), 1)
 		return m, nil
 	case m.multiplayerRoomFocus == multiplayerRoomFocusActions && key.Matches(msg, m.keys.Select):
