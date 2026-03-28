@@ -37,6 +37,7 @@ const (
 type Profile struct {
 	Version            int                       `json:"version"`
 	LastUpdated        time.Time                 `json:"last_updated"`
+	Language           string                    `json:"language,omitempty"`
 	UnlockedClasses    []string                  `json:"unlocked_classes"`
 	MetaCurrency       int                       `json:"meta_currency"`
 	Perks              map[string]int            `json:"perks"`

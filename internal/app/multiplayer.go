@@ -8,6 +8,7 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 	"cmdcards/internal/netplay"
 	"cmdcards/internal/ui"
 
@@ -144,11 +145,11 @@ func (m model) updateMultiplayerMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.index = 0
 	case key.Matches(msg, m.keys.Select):
 		switch m.multiplayerMenuItems[m.index] {
-		case "Create Room":
+		case multiplayerMenuCreate:
 			m.screen = screenMultiplayerCreate
 			m.index = 0
 			m.setMultiplayerCreateFocus()
-		case "Join Room":
+		case multiplayerMenuJoin:
 			m.screen = screenMultiplayerJoin
 			m.index = 0
 			m.setMultiplayerJoinFocus()
@@ -299,58 +300,58 @@ func (m model) launchMultiplayerJoin() (tea.Model, tea.Cmd) {
 
 func multiplayerCreateLines(m model) []string {
 	class := m.classes[m.multiplayerCreateClass]
-	forceNew := "Yes"
+	forceNew := m.theme.Text("multiplayer.create.force_new.yes")
 	if !m.multiplayerCreateForceNew {
-		forceNew = "No, prefer resuming the previous room"
+		forceNew = m.theme.Text("multiplayer.create.force_new.no")
 	}
 	return []string{
-		fmt.Sprintf("Your name: %s", displayInputValue(m.multiplayerCreateName)),
-		fmt.Sprintf("Starting class: %s (%s)", class.Name, class.ID),
-		fmt.Sprintf("Listen port: %s", displayInputValue(m.multiplayerCreatePort)),
-		fmt.Sprintf("Force new room: %s", forceNew),
-		"Create room now",
-		"Back",
+		m.theme.Textf("multiplayer.create.name", i18n.Args{"value": displayInputValue(m.theme, m.multiplayerCreateName)}),
+		m.theme.Textf("multiplayer.create.class", i18n.Args{"name": class.Name, "id": class.ID}),
+		m.theme.Textf("multiplayer.create.port", i18n.Args{"value": displayInputValue(m.theme, m.multiplayerCreatePort)}),
+		m.theme.Textf("multiplayer.create.force_new", i18n.Args{"value": forceNew}),
+		m.theme.Text("multiplayer.create.launch"),
+		m.theme.Text("multiplayer.back"),
 	}
 }
 
 func multiplayerJoinLines(m model) []string {
 	class := m.classes[m.multiplayerJoinClass]
 	return []string{
-		fmt.Sprintf("Room address: %s", displayInputValue(m.multiplayerJoinAddr)),
-		fmt.Sprintf("Your name: %s", displayInputValue(m.multiplayerJoinName)),
-		fmt.Sprintf("Join as class: %s (%s)", class.Name, class.ID),
-		"Join room now",
-		"Back",
+		m.theme.Textf("multiplayer.join.addr", i18n.Args{"value": displayInputValue(m.theme, m.multiplayerJoinAddr)}),
+		m.theme.Textf("multiplayer.join.name", i18n.Args{"value": displayInputValue(m.theme, m.multiplayerJoinName)}),
+		m.theme.Textf("multiplayer.join.class", i18n.Args{"name": class.Name, "id": class.ID}),
+		m.theme.Text("multiplayer.join.launch"),
+		m.theme.Text("multiplayer.back"),
 	}
 }
 
-func displayInputValue(input textinput.Model) string {
+func displayInputValue(theme ui.Theme, input textinput.Model) string {
 	value := strings.TrimSpace(input.Value())
 	if value != "" {
 		return value
 	}
 	if input.Placeholder != "" {
-		return "<" + input.Placeholder + ">"
+		return theme.Textf("multiplayer.value.placeholder", i18n.Args{"value": input.Placeholder})
 	}
-	return "<empty>"
+	return theme.Text("multiplayer.value.empty")
 }
 
 func multiplayerCreateHelp(m model) []string {
 	return []string{
-		"Create flow is simple: enter your name, confirm class and port, then choose Create room now.",
-		"After hosting, you go straight into the multiplayer room. Other local players can join with your LAN address and port.",
-		"For local testing on one machine, keeping port 7777 is usually enough and the other window can join 127.0.0.1:7777.",
-		fmt.Sprintf("Suggested LAN address: %s", multiplayerAddressSummary(strings.TrimSpace(m.multiplayerCreatePort.Value()))),
-		"Use Up/Down to move. Left/Right changes class or toggles options. When name or port is selected, type directly and use Backspace to edit.",
+		m.theme.Text("multiplayer.create.help.1"),
+		m.theme.Text("multiplayer.create.help.2"),
+		m.theme.Text("multiplayer.create.help.3"),
+		m.theme.Textf("multiplayer.create.help.4", i18n.Args{"value": multiplayerAddressSummary(strings.TrimSpace(m.multiplayerCreatePort.Value()))}),
+		m.theme.Text("multiplayer.create.help.5"),
 	}
 }
 
-func multiplayerJoinHelp() []string {
+func multiplayerJoinHelp(m model) []string {
 	return []string{
-		"Joining only needs three things: the room address, your name, and the class you want to bring.",
-		"The room address is usually the host LAN IP and port, for example 127.0.0.1:7777 for local testing.",
-		"If you reconnect after a disconnect, keep the same player name so the room can restore your previous seat.",
-		"Use Up/Down to move. Left/Right changes class. When address or name is selected, type directly and use Backspace to edit.",
+		m.theme.Text("multiplayer.join.help.1"),
+		m.theme.Text("multiplayer.join.help.2"),
+		m.theme.Text("multiplayer.join.help.3"),
+		m.theme.Text("multiplayer.join.help.4"),
 	}
 }
 

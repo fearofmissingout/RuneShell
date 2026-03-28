@@ -6,9 +6,10 @@ import (
 	"sort"
 
 	"cmdcards/internal/content"
+	"cmdcards/internal/i18n"
 )
 
-const CurrentProfileVersion = 2
+const CurrentProfileVersion = 3
 
 type PerkDef struct {
 	ID          string
@@ -72,6 +73,9 @@ func NormalizeProfile(lib *content.Library, profile *Profile) {
 	}
 	if profile.Perks == nil {
 		profile.Perks = map[string]int{}
+	}
+	if profile.Language == "" {
+		profile.Language = i18n.DefaultLanguage
 	}
 	if profile.ContentUnlocks == nil {
 		profile.ContentUnlocks = map[string][]string{}

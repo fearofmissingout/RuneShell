@@ -5,14 +5,15 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 const (
-	menuCodexLabel       = "图鉴"
-	menuProgressionLabel = "局外养成"
+	menuCodexLabel       = "codex"
+	menuProgressionLabel = "progression"
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 	profileTabPerks = iota
 	profileTabEquipment
 	profileTabLoadout
+	profileTabSettings
 	profileTabCount
 )
 
@@ -94,7 +96,7 @@ func (m model) updateProfile(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, nil
 			}
-			m.message = "局外成长已提升"
+			m.message = i18n.Text(m.profile.Language, "message.progression_upgraded", nil)
 			return m, clearMessage()
 		case profileTabEquipment:
 			items := progressionEquipmentItems(m.lib)
@@ -109,7 +111,7 @@ func (m model) updateProfile(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, nil
 			}
-			m.message = "装备已解锁"
+			m.message = i18n.Text(m.profile.Language, "message.equipment_unlocked", nil)
 			return m, clearMessage()
 		case profileTabLoadout:
 			rows := progressionLoadoutRows(m.lib)
@@ -125,7 +127,26 @@ func (m model) updateProfile(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, nil
 			}
-			m.message = "初始装备已切换"
+			m.message = i18n.Text(m.profile.Language, "message.loadout_switched", nil)
+			return m, clearMessage()
+		case profileTabSettings:
+			languages := i18n.SupportedLanguages()
+			if len(languages) == 0 {
+				return m, nil
+			}
+			selected := languages[m.index]
+			if selected == m.profile.Language {
+				return m, nil
+			}
+			m.profile.Language = selected
+			m.applyLanguage()
+			if err := m.persistProfile(); err != nil {
+				m.err = err
+				return m, nil
+			}
+			m.message = i18n.Text(m.profile.Language, "message.language_switched", i18n.Args{
+				"language": i18n.Text(m.profile.Language, "language."+selected, nil),
+			})
 			return m, clearMessage()
 		}
 	}
@@ -154,6 +175,8 @@ func (m model) profileItemCount() int {
 		return len(engine.ProgressionPerks())
 	case profileTabEquipment:
 		return len(progressionEquipmentItems(m.lib))
+	case profileTabSettings:
+		return len(i18n.SupportedLanguages())
 	default:
 		return len(progressionLoadoutRows(m.lib))
 	}

@@ -310,7 +310,7 @@ func TestMultiplayerCreateVisibleLaunchAndBackMatchActions(t *testing.T) {
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 		m = next.(model)
 	}
-	if got := multiplayerCreateLines(m)[m.index]; got != "Create room now" {
+	if got := multiplayerCreateLines(m)[m.index]; got != m.theme.Text("multiplayer.create.launch") {
 		t.Fatalf("expected visible launch item at index %d, got %q", m.index, got)
 	}
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -330,13 +330,38 @@ func TestMultiplayerCreateVisibleLaunchAndBackMatchActions(t *testing.T) {
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 		m = next.(model)
 	}
-	if got := multiplayerCreateLines(m)[m.index]; got != "Back" {
+	if got := multiplayerCreateLines(m)[m.index]; got != m.theme.Text("multiplayer.back") {
 		t.Fatalf("expected visible back item at index %d, got %q", m.index, got)
 	}
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m2 := next.(model)
 	if m2.screen != screenMultiplayerMenu {
 		t.Fatalf("expected visible back item to return to multiplayer menu, got %q", m2.screen)
+	}
+}
+
+func TestProfileSettingsCanSwitchLanguage(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	store := storage.NewStore(t.TempDir())
+	m := newModel(lib, store, engine.DefaultProfile(lib), nil)
+	m.screen = screenProfile
+	m.profileTab = profileTabSettings
+	m.index = 1
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m1 := next.(model)
+	if m1.profile.Language != "en-US" {
+		t.Fatalf("expected profile language to switch to en-US, got %q", m1.profile.Language)
+	}
+	if m1.theme.Lang != "en-US" {
+		t.Fatalf("expected theme language to switch to en-US, got %q", m1.theme.Lang)
+	}
+	if got := multiplayerCreateLines(m1)[0]; got == "" || got == "你的名字: <本地显示名>" {
+		t.Fatalf("expected localized multiplayer create line after language switch, got %q", got)
 	}
 }
 

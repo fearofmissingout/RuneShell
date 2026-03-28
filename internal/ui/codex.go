@@ -16,7 +16,7 @@ func RenderCodex(theme Theme, lib *content.Library, tab, selected, width int) st
 	listWidth := panelContentWidth(leftWidth)
 	detailWidth := panelContentWidth(rightWidth)
 
-	tabs := renderSimpleTabs(theme, []string{"卡牌", "遗物", "装备"}, tab)
+	tabs := renderSimpleTabs(theme, []string{theme.Text("menu.codex"), theme.Text("codex.relics"), theme.Text("codex.equipment")}, tab)
 	items, details := codexContent(lib, tab)
 	selected = clampSelection(selected, len(items))
 	window := listPageWindow(len(items), selected, pagedListSize)
@@ -55,7 +55,7 @@ func RenderCodex(theme Theme, lib *content.Library, tab, selected, width int) st
 	}
 	detailPanel := theme.PanelAlt.Width(rightWidth).Render(strings.Join(detailLines, "\n"))
 
-	header := []string{theme.Title.Render("图鉴")}
+	header := []string{theme.Title.Render(theme.Text("menu.codex"))}
 	for _, line := range wrapLine(currentSummary, totalWidth) {
 		header = append(header, theme.Subtitle.Render(line))
 	}

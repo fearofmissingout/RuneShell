@@ -6,6 +6,7 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 	"cmdcards/internal/netplay"
 	"cmdcards/internal/storage"
 	"cmdcards/internal/ui"
@@ -40,13 +41,19 @@ const (
 )
 
 const (
-	menuContinue    = "继续冒险"
-	menuAbandon     = "放弃本局"
-	menuStory       = "主线模式"
-	menuEndless     = "无尽模式"
-	menuProfile     = "档案"
-	menuMultiplayer = "多人模式"
-	menuQuit        = "Quit"
+	menuContinue    = "continue"
+	menuAbandon     = "abandon"
+	menuStory       = "story"
+	menuEndless     = "endless"
+	menuProfile     = "profile"
+	menuMultiplayer = "multiplayer"
+	menuQuit        = "quit"
+)
+
+const (
+	multiplayerMenuCreate = "create_room"
+	multiplayerMenuJoin   = "join_room"
+	multiplayerMenuBack   = "back"
 )
 
 type multiplayerLaunchKind string
@@ -188,24 +195,24 @@ func Run(lib *content.Library, store *storage.Store) error {
 
 func newModel(lib *content.Library, store *storage.Store, profile engine.Profile, run *engine.RunState) model {
 	menuItems := menuItemsForRun(run)
-	createName := newMultiplayerInput("Host", "Choose a local display name", 24)
-	createPort := newMultiplayerInput("7777", "LAN port, for example 7777", 5)
-	joinAddr := newMultiplayerInput("127.0.0.1:7777", "Host address, for example 127.0.0.1:7777", 64)
-	joinName := newMultiplayerInput("Guest", "Choose a local display name", 24)
-	commandInput := newMultiplayerInput("", "Examples: ready, chat hello, node 1", 240)
+	createName := newMultiplayerInput("Host", "", 24)
+	createPort := newMultiplayerInput("7777", "", 5)
+	joinAddr := newMultiplayerInput("127.0.0.1:7777", "", 64)
+	joinName := newMultiplayerInput("Guest", "", 24)
+	commandInput := newMultiplayerInput("", "", 240)
 	commandInput.Width = 64
-	return model{
+	m := model{
 		now:                       time.Now,
 		lib:                       lib,
 		store:                     store,
 		profile:                   profile,
 		run:                       run,
 		screen:                    screenMenu,
-		theme:                     ui.DefaultTheme(),
+		theme:                     ui.DefaultTheme().WithLanguage(profile.Language),
 		help:                      help.New(),
 		menuItems:                 menuItems,
 		classes:                   lib.ClassList(),
-		multiplayerMenuItems:      []string{"Create Room", "Join Room", "Back"},
+		multiplayerMenuItems:      []string{multiplayerMenuCreate, multiplayerMenuJoin, multiplayerMenuBack},
 		multiplayerCreateName:     createName,
 		multiplayerCreatePort:     createPort,
 		multiplayerCreateClass:    classIndexByID(lib.ClassList(), "vanguard"),
@@ -214,24 +221,10 @@ func newModel(lib *content.Library, store *storage.Store, profile engine.Profile
 		multiplayerJoinName:       joinName,
 		multiplayerJoinClass:      classIndexByID(lib.ClassList(), "arcanist"),
 		multiplayerCommandInput:   commandInput,
-		keys: keyMap{
-			Left:    key.NewBinding(key.WithKeys("left", "pgup"), key.WithHelp("left/PgUp", "prev page")),
-			Right:   key.NewBinding(key.WithKeys("right", "pgdown"), key.WithHelp("right/PgDn", "next page")),
-			Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("up/k", "up")),
-			Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("down/j", "down")),
-			Select:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
-			Cycle:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "cycle")),
-			Map:     key.NewBinding(key.WithKeys("m", "M"), key.WithHelp("m", "map")),
-			Stats:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "stats")),
-			Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-			EndTurn: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "end turn")),
-			Potion:  key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "potion")),
-			Skip:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "skip")),
-			Leave:   key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "leave")),
-			Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-			Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
-		},
+		keys:                      localizedKeyMap(profile.Language),
 	}
+	m.applyLanguage()
+	return m
 }
 
 func menuItemsForRun(run *engine.RunState) []string {
@@ -240,6 +233,97 @@ func menuItemsForRun(run *engine.RunState) []string {
 		items = []string{menuContinue, menuAbandon, menuStory, menuEndless, menuCodexLabel, menuProgressionLabel, menuMultiplayer, menuQuit}
 	}
 	return items
+}
+
+func menuLabel(theme ui.Theme, item string) string {
+	switch item {
+	case menuContinue:
+		return theme.Text("menu.continue")
+	case menuAbandon:
+		return theme.Text("menu.abandon")
+	case menuStory:
+		return theme.Text("menu.story")
+	case menuEndless:
+		return theme.Text("menu.endless")
+	case menuCodexLabel:
+		return theme.Text("menu.codex")
+	case menuProgressionLabel, menuProfile:
+		return theme.Text("menu.progression")
+	case menuMultiplayer:
+		return theme.Text("menu.multiplayer")
+	case menuQuit:
+		return theme.Text("menu.quit")
+	default:
+		return item
+	}
+}
+
+func menuLabels(theme ui.Theme, items []string) []string {
+	labels := make([]string, 0, len(items))
+	for _, item := range items {
+		labels = append(labels, menuLabel(theme, item))
+	}
+	return labels
+}
+
+func multiplayerMenuLabel(theme ui.Theme, item string) string {
+	switch item {
+	case multiplayerMenuCreate:
+		return theme.Text("multiplayer.create")
+	case multiplayerMenuJoin:
+		return theme.Text("multiplayer.join")
+	default:
+		return theme.Text("multiplayer.back")
+	}
+}
+
+func multiplayerMenuLabels(theme ui.Theme, items []string) []string {
+	labels := make([]string, 0, len(items))
+	for _, item := range items {
+		labels = append(labels, multiplayerMenuLabel(theme, item))
+	}
+	return labels
+}
+
+func localizedModeLabel(theme ui.Theme, mode engine.GameMode) string {
+	switch mode {
+	case engine.ModeEndless:
+		return theme.Text("mode.endless")
+	default:
+		return theme.Text("mode.story")
+	}
+}
+
+func localizedKeyMap(lang string) keyMap {
+	return keyMap{
+		Left:    key.NewBinding(key.WithKeys("left", "pgup"), key.WithHelp("left/PgUp", i18n.Text(lang, "key.prev_page", nil))),
+		Right:   key.NewBinding(key.WithKeys("right", "pgdown"), key.WithHelp("right/PgDn", i18n.Text(lang, "key.next_page", nil))),
+		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("up/k", i18n.Text(lang, "key.up", nil))),
+		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("down/j", i18n.Text(lang, "key.down", nil))),
+		Select:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", i18n.Text(lang, "key.select", nil))),
+		Cycle:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", i18n.Text(lang, "key.cycle", nil))),
+		Map:     key.NewBinding(key.WithKeys("m", "M"), key.WithHelp("m", i18n.Text(lang, "key.map", nil))),
+		Stats:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", i18n.Text(lang, "key.stats", nil))),
+		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", i18n.Text(lang, "key.back", nil))),
+		EndTurn: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", i18n.Text(lang, "key.end_turn", nil))),
+		Potion:  key.NewBinding(key.WithKeys("z"), key.WithHelp("z", i18n.Text(lang, "key.potion", nil))),
+		Skip:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", i18n.Text(lang, "key.skip", nil))),
+		Leave:   key.NewBinding(key.WithKeys("l"), key.WithHelp("l", i18n.Text(lang, "key.leave", nil))),
+		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", i18n.Text(lang, "menu.quit", nil))),
+	}
+}
+
+func (m *model) applyLanguage() {
+	lang := i18n.NormalizeLanguage(m.profile.Language)
+	m.profile.Language = lang
+	m.theme = ui.DefaultTheme().WithLanguage(lang)
+	m.keys = localizedKeyMap(lang)
+	m.multiplayerCreateName.Placeholder = m.theme.Text("multiplayer.placeholder.name")
+	m.multiplayerCreatePort.Placeholder = m.theme.Text("multiplayer.placeholder.port")
+	m.multiplayerJoinAddr.Placeholder = m.theme.Text("multiplayer.placeholder.addr")
+	m.multiplayerJoinName.Placeholder = m.theme.Text("multiplayer.placeholder.name")
+	m.multiplayerCommandInput.Placeholder = m.theme.Text("multiplayer.placeholder.command")
 }
 
 func (m *model) saveCheckpoint() error {
@@ -1383,21 +1467,21 @@ func (m model) View() string {
 
 	switch m.screen {
 	case screenMenu:
-		body = ui.RenderChoiceScreen(m.theme, "RuneShell", "Terminal deckbuilder", m.menuItems, m.index, "Use arrows to choose, Enter to confirm, q to quit", width)
+		body = ui.RenderChoiceScreen(m.theme, m.theme.Text("menu.title"), m.theme.Text("menu.subtitle"), menuLabels(m.theme, m.menuItems), m.index, m.theme.Text("menu.footer"), width)
 	case screenClass:
 		items := make([]string, 0, len(m.classes))
 		for _, class := range m.classes {
 			items = append(items, fmt.Sprintf("%s - %s", class.Name, class.Description))
 		}
-		body = ui.RenderChoiceScreen(m.theme, "Choose Class", string(m.mode), items, m.index, "Enter to start, Esc to go back", width)
+		body = ui.RenderChoiceScreen(m.theme, m.theme.Text("class.title"), localizedModeLabel(m.theme, m.mode), items, m.index, m.theme.Text("class.footer"), width)
 	case screenMap:
-		body = ui.RenderMap(m.theme, m.run, engine.ReachableNodes(m.run), m.index, width)
+		body = ui.RenderMap(m.theme, m.run, m.currentNode, engine.ReachableNodes(m.run), m.index, width, height)
 	case screenCombat:
 		body = ui.RenderCombat(m.theme, m.lib, m.run, m.combat, m.index, m.combatPotionIndex, m.combatPotionMode, m.combatPane, m.combatTopPage, m.combatLogPage, m.combatTarget, width, height)
 	case screenPotionReplace:
 		body = ui.RenderPotionReplace(m.theme, m.lib, m.run.Player, m.pendingPotionID, m.index, width)
 	case screenReward:
-		body = ui.RenderReward(m.theme, m.lib, *m.reward, m.index, width)
+		body = ui.RenderRewardDetailed(m.theme, m.lib, *m.reward, m.index, width)
 	case screenEquip:
 		body = ui.RenderEquipment(m.theme, m.lib, *m.equipOffer, m.index, width)
 	case screenDeckAct:
@@ -1413,11 +1497,11 @@ func (m model) View() string {
 	case screenProfile:
 		body = ui.RenderProgression(m.theme, m.lib, m.profile, m.profileTab, m.index, width)
 	case screenMultiplayerMenu:
-		body = ui.RenderChoiceScreen(m.theme, "Multiplayer", "Create or join a LAN room.", m.multiplayerMenuItems, m.index, "Enter to confirm, Esc to go back", width)
+		body = ui.RenderChoiceScreen(m.theme, m.theme.Text("multiplayer.menu.title"), m.theme.Text("multiplayer.menu.subtitle"), multiplayerMenuLabels(m.theme, m.multiplayerMenuItems), m.index, m.theme.Text("multiplayer.menu.footer"), width)
 	case screenMultiplayerCreate:
-		body = ui.RenderMultiplayerSetup(m.theme, "Create Multiplayer Room", "Confirm your name, class, and port before hosting.", multiplayerCreateLines(m), m.index, multiplayerCreateHelp(m), width)
+		body = ui.RenderMultiplayerSetup(m.theme, m.theme.Text("multiplayer.create.title"), m.theme.Text("multiplayer.create.subtitle"), multiplayerCreateLines(m), m.index, multiplayerCreateHelp(m), width)
 	case screenMultiplayerJoin:
-		body = ui.RenderMultiplayerSetup(m.theme, "Join Multiplayer Room", "Enter the host address, then confirm your name and class.", multiplayerJoinLines(m), m.index, multiplayerJoinHelp(), width)
+		body = ui.RenderMultiplayerSetup(m.theme, m.theme.Text("multiplayer.join.title"), m.theme.Text("multiplayer.join.subtitle"), multiplayerJoinLines(m), m.index, multiplayerJoinHelp(m), width)
 	case screenMultiplayerRoom:
 		actions := multiplayerQuickActions(m.multiplayerSnapshot)
 		actionLabels := multiplayerQuickActionLabels(actions)

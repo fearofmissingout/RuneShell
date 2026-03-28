@@ -7,11 +7,13 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 
 	"github.com/charmbracelet/lipgloss"
 )
 
 type Theme struct {
+	Lang     string
 	Title    lipgloss.Style
 	Subtitle lipgloss.Style
 	Panel    lipgloss.Style
@@ -34,11 +36,12 @@ type Theme struct {
 
 func DefaultTheme() Theme {
 	return Theme{
+		Lang:     i18n.DefaultLanguage,
 		Title:    lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Bold(true),
 		Subtitle: lipgloss.NewStyle().Foreground(lipgloss.Color("189")).Bold(true),
 		Panel:    lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("74")).Padding(1, 2),
 		PanelAlt: lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("237")).Padding(1, 1),
-		Selected: lipgloss.NewStyle().Foreground(lipgloss.Color("16")).Background(lipgloss.Color("221")).Bold(true),
+		Selected: lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("25")).Bold(true),
 		Normal:   lipgloss.NewStyle().Foreground(lipgloss.Color("255")),
 		Muted:    lipgloss.NewStyle().Foreground(lipgloss.Color("252")),
 		Good:     lipgloss.NewStyle().Foreground(lipgloss.Color("121")).Bold(true),
@@ -53,6 +56,19 @@ func DefaultTheme() Theme {
 		Ability:  lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Bold(true),
 		Enemy:    lipgloss.NewStyle().Foreground(lipgloss.Color("209")).Bold(true),
 	}
+}
+
+func (t Theme) WithLanguage(lang string) Theme {
+	t.Lang = i18n.NormalizeLanguage(lang)
+	return t
+}
+
+func (t Theme) Text(key string) string {
+	return i18n.Text(t.Lang, key, nil)
+}
+
+func (t Theme) Textf(key string, args i18n.Args) string {
+	return i18n.Text(t.Lang, key, args)
 }
 
 func styleForClass(theme Theme, classID string) lipgloss.Style {
@@ -94,18 +110,37 @@ func styleForNodeKind(theme Theme, kind engine.NodeKind) lipgloss.Style {
 
 func styleForNodeKindLabel(theme Theme, kind string) lipgloss.Style {
 	switch strings.TrimSpace(kind) {
-	case "Boss", "绮捐嫳":
+	case "Boss", engine.NodeKindName(engine.NodeBoss), engine.NodeKindName(engine.NodeElite):
 		return theme.Bad
-	case "鍟嗗簵":
+	case engine.NodeKindName(engine.NodeShop):
 		return theme.Skill
-	case "浜嬩欢":
+	case engine.NodeKindName(engine.NodeEvent):
 		return theme.Accent
-	case "绡濈伀":
+	case engine.NodeKindName(engine.NodeRest):
 		return theme.ClassN
-	case "鎬墿":
+	case engine.NodeKindName(engine.NodeMonster):
 		return theme.Good
 	default:
 		return theme.Muted
+	}
+}
+
+func displayNodeKindLabel(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case engine.NodeKindName(engine.NodeMonster):
+		return "Monster"
+	case engine.NodeKindName(engine.NodeEvent):
+		return "Event"
+	case engine.NodeKindName(engine.NodeShop):
+		return "Shop"
+	case engine.NodeKindName(engine.NodeElite):
+		return "Elite"
+	case engine.NodeKindName(engine.NodeRest):
+		return "Rest"
+	case engine.NodeKindName(engine.NodeBoss):
+		return "Boss"
+	default:
+		return kind
 	}
 }
 
@@ -272,49 +307,73 @@ func RenderChoiceScreen(theme Theme, title, subtitle string, items []string, sel
 	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
 }
 
-func RenderMap(theme Theme, run *engine.RunState, nodes []engine.Node, selected int, width int) string {
+func RenderMap(theme Theme, run *engine.RunState, currentNode engine.Node, nodes []engine.Node, selected int, width int, height int) string {
 	panelWidth := fitPanelWidth(width, 72, 4)
+	contentWidth := panelContentWidth(panelWidth)
 	lines := []string{
-		theme.Title.Render(fmt.Sprintf("第 %d 幕地图", run.Act)),
+		theme.Title.Render(fmt.Sprintf("地图 Act %d", run.Act)),
 		theme.Subtitle.Render(fmt.Sprintf("生命 %d/%d  金币 %d  牌组 %d  药水 %d/%d", run.Player.HP, run.Player.MaxHP, run.Player.Gold, len(run.Player.Deck), len(run.Player.Potions), run.Player.PotionCapacity)),
 		"",
+		theme.Accent.Render("可选路线"),
 	}
 	for i, node := range nodes {
-		line := fmt.Sprintf("%d. %s", i+1, styleForNodeKind(theme, node.Kind).Render(describeNode(node)))
+		line := truncateASCII(fmt.Sprintf("%d. %s", i+1, styleForNodeKind(theme, node.Kind).Render(describeNode(node))), contentWidth)
 		if i == selected {
 			lines = append(lines, theme.Selected.Render(line))
 		} else {
 			lines = append(lines, theme.Normal.Render(line))
 		}
 	}
-	lines = append(lines, "", theme.Muted.Render("方向键或 hjkl 选择，回车进入，q 退出"))
-	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
+	lines = append(lines, "", theme.Muted.Render("方向键或 hjkl 选择，回车进入，M 查看全屏地图"))
+	listPanel := theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
+	treeHeight := 0
+	if height > 0 {
+		treeHeight = max(16, height-10)
+	}
+	treePanel := RenderMapTreeOverlay(theme, run, currentNode, width, treeHeight)
+	return lipgloss.JoinVertical(lipgloss.Left, treePanel, listPanel)
 }
 
 func RenderMapTreeOverlay(theme Theme, run *engine.RunState, currentNode engine.Node, width int, height int) string {
 	if run == nil {
-		return theme.Panel.Width(fitPanelWidth(width, 72, 4)).Render(theme.Muted.Render("当前没有进行中的地图。"))
+		return theme.Panel.Width(fitPanelWidth(width, 72, 4)).Render(theme.Muted.Render("\u5f53\u524d\u6ca1\u6709\u8fdb\u884c\u4e2d\u7684\u5730\u56fe\u3002"))
 	}
 	layers := make([][]mapTreeNodeView, 0, len(run.Map.Floors))
 	for _, floor := range run.Map.Floors {
 		layer := make([]mapTreeNodeView, 0, len(floor))
 		for _, node := range floor {
-			layer = append(layer, mapTreeNodeView{ID: node.ID, Floor: node.Floor, Index: node.Index, Kind: engine.NodeKindName(node.Kind), Edges: append([]string{}, node.Edges...)})
+			layer = append(layer, mapTreeNodeView{
+				ID:    node.ID,
+				Floor: node.Floor,
+				Index: node.Index,
+				Kind:  engine.NodeKindName(node.Kind),
+				Edges: append([]string{}, node.Edges...),
+			})
 		}
 		layers = append(layers, layer)
 	}
-	return renderMapTreeOverlayPanel(theme, fmt.Sprintf("地图总览 Act %d", run.Act), mapOverlayPosition(currentNode, run.CurrentFloor), run.Reachable, layers, currentNode.ID, run.CurrentFloor, width, height)
+	return renderMapTreeOverlayPanel(
+		theme,
+		fmt.Sprintf("\u5730\u56fe\u603b\u89c8 Act %d", run.Act),
+		mapOverlayPosition(currentNode, run.CurrentFloor),
+		run.Reachable,
+		layers,
+		currentNode.ID,
+		run.CurrentFloor,
+		width,
+		height,
+	)
 }
 
 func RenderStatsOverlay(theme Theme, title string, combatLines []string, runLines []string, width int, height int) string {
 	panelWidth := max(48, viewportWidth(width, 92)-2)
 	contentWidth := panelContentWidth(panelWidth)
 	lines := []string{theme.Title.Render(title)}
-	lines = append(lines, theme.Subtitle.Render("K / Esc closes"))
+	lines = append(lines, theme.Subtitle.Render("K / Esc \u5173\u95ed"))
 	lines = append(lines, "")
-	lines = append(lines, theme.Accent.Render("Current Combat"))
+	lines = append(lines, theme.Accent.Render("\u5f53\u524d\u6218\u6597"))
 	if len(combatLines) == 0 {
-		lines = append(lines, theme.Muted.Render("No combat is active right now."))
+		lines = append(lines, theme.Muted.Render("\u5f53\u524d\u6ca1\u6709\u8fdb\u884c\u4e2d\u7684\u6218\u6597\u3002"))
 	} else {
 		for _, item := range combatLines {
 			for _, line := range wrapLine("- "+item, contentWidth) {
@@ -323,9 +382,9 @@ func RenderStatsOverlay(theme Theme, title string, combatLines []string, runLine
 		}
 	}
 	lines = append(lines, "")
-	lines = append(lines, theme.Accent.Render("Whole Run"))
+	lines = append(lines, theme.Accent.Render("\u6574\u5c40\u7edf\u8ba1"))
 	if len(runLines) == 0 {
-		lines = append(lines, theme.Muted.Render("No statistics are available yet."))
+		lines = append(lines, theme.Muted.Render("\u8fd8\u6ca1\u6709\u53ef\u7528\u7edf\u8ba1\u3002"))
 	} else {
 		for _, item := range runLines {
 			for _, line := range wrapLine("- "+item, contentWidth) {
@@ -354,51 +413,54 @@ func renderMapTreeOverlayPanel(theme Theme, title string, position string, reach
 	for _, id := range reachableIDs {
 		reachableSet[id] = struct{}{}
 	}
-	lines := []string{theme.Title.Render(title)}
-	lines = append(lines, theme.Subtitle.Render(position))
+
+	lines := []string{theme.Title.Render(title), theme.Subtitle.Render(position)}
 	if len(reachableIDs) > 0 {
 		parts := make([]string, 0, len(reachableIDs))
 		for _, layer := range layers {
 			for _, node := range layer {
 				if _, ok := reachableSet[node.ID]; ok {
-					parts = append(parts, fmt.Sprintf("F%d-%d %s", node.Floor, node.Index+1, node.Kind))
+					parts = append(parts, fmt.Sprintf("F%d-%d %s", node.Floor, node.Index+1, displayNodeKindLabel(node.Kind)))
 				}
 			}
 		}
-		for _, line := range wrapLine("当前可达: "+strings.Join(parts, " | "), contentWidth) {
+		for _, line := range wrapLine("\u5f53\u524d\u53ef\u8fbe: "+strings.Join(parts, " | "), contentWidth) {
 			lines = append(lines, theme.Muted.Render(line))
 		}
 	}
-	lines = append(lines, "", theme.Accent.Render("树状地图"))
+
+	lines = append(lines, "", theme.Accent.Render("\u6811\u72b6\u5730\u56fe"))
 	for floorIndex, layer := range layers {
-		lines = append(lines, theme.Subtitle.Render(fmt.Sprintf("第%02d层", floorIndex+1)))
+		lines = append(lines, theme.Subtitle.Render(fmt.Sprintf("\u7b2c%02d\u5c42", floorIndex+1)))
 		for idx, node := range layer {
-			branch := "├─"
+			branch := "|-"
 			if idx == len(layer)-1 {
-				branch = "└─"
+				branch = "`-"
 			}
-			marker := "[未到]"
+			marker := "[\u672a\u5230]"
 			style := theme.Normal
 			switch {
 			case currentNodeID != "" && currentNodeID == node.ID:
-				marker = "[当前]"
+				marker = "[\u5f53\u524d]"
 				style = theme.Selected
 			case containsString(reachableIDs, node.ID):
-				marker = "[可达]"
+				marker = "[\u53ef\u8fbe]"
 				style = theme.Good
 			case node.Floor <= currentFloor:
-				marker = "[已过]"
+				marker = "[\u5df2\u8fc7]"
 				style = theme.Accent
 			default:
 				style = theme.Muted
 			}
-			text := fmt.Sprintf("%s %s %d. %s%s", branch, marker, node.Index+1, styleForNodeKindLabel(theme, node.Kind).Render(node.Kind), compactHighlightedNodeEdges(node.Edges, reachableSet, currentNodeID))
+			label := displayNodeKindLabel(node.Kind)
+			text := fmt.Sprintf("%s %s %d. %s%s", branch, marker, node.Index+1, styleForNodeKindLabel(theme, node.Kind).Render(label), compactHighlightedNodeEdges(node.Edges, reachableSet, currentNodeID))
 			for _, line := range wrapLine(text, contentWidth) {
 				lines = append(lines, style.Render(line))
 			}
 		}
 	}
-	lines = append(lines, "", theme.Muted.Render("按 M 或 Esc 返回当前界面"))
+
+	lines = append(lines, "", theme.Muted.Render("\u6309 M \u6216 Esc \u8fd4\u56de"))
 	if height > 0 {
 		maxLines := max(12, height-6)
 		lines = fixedPanelLines(lines, maxLines, theme, contentWidth)
@@ -407,9 +469,9 @@ func renderMapTreeOverlayPanel(theme Theme, title string, position string, reach
 }
 
 func mapOverlayPosition(currentNode engine.Node, currentFloor int) string {
-	position := fmt.Sprintf("当前位置: 第 %d 层后，下一层为第 %d 层", currentFloor, min(15, currentFloor+1))
+	position := fmt.Sprintf("\u5f53\u524d\u4f4d\u7f6e: \u7b2c %d \u5c42\u540e\uff0c\u4e0b\u4e00\u5c42\u4e3a\u7b2c %d \u5c42", currentFloor, min(15, currentFloor+1))
 	if currentNode.ID != "" {
-		position = fmt.Sprintf("当前位置: 第 %d 层 %s", currentNode.Floor, engine.NodeKindName(currentNode.Kind))
+		position = fmt.Sprintf("\u5f53\u524d\u4f4d\u7f6e: \u7b2c %d \u5c42 %s", currentNode.Floor, displayNodeKindLabel(engine.NodeKindName(currentNode.Kind)))
 	}
 	return position
 }
@@ -423,10 +485,10 @@ func compactHighlightedNodeEdges(edges []string, reachableSet map[string]struct{
 	for _, edge := range edges {
 		label := compactNodeID(edge)
 		if edge == currentNodeID {
-			label = "[当前:" + label + "]"
+			label = "[\u5f53\u524d:" + label + "]"
 			highlighted = true
 		} else if _, ok := reachableSet[edge]; ok {
-			label = "[可达:" + label + "]"
+			label = "[\u53ef\u8fbe:" + label + "]"
 			highlighted = true
 		}
 		parts = append(parts, label)
@@ -465,6 +527,66 @@ func containsString(items []string, target string) bool {
 	return false
 }
 
+func renderActorStripClean(theme Theme, title string, actors []engine.CombatActor, target engine.CombatTarget, friendly bool, width int) string {
+	if len(actors) == 0 {
+		return theme.PanelAlt.Copy().Padding(0, 1).Width(width).Render(theme.Muted.Render(title + " empty"))
+	}
+	contentWidth := panelContentWidth(width)
+	cols := adaptiveStripColumns(contentWidth, len(actors))
+	cellWidth := adaptiveStripCellWidth(contentWidth, cols)
+	containerStyle := theme.PanelAlt.Copy().Padding(0, 1)
+	cellStyle := theme.PanelAlt.Copy().Padding(0, 1)
+	parts := make([]string, 0, len(actors))
+	for i, actor := range actors {
+		selected := friendly && target.Kind == engine.CombatTargetAlly && target.Index == i
+		lines := []string{}
+		nameLine := fmt.Sprintf("P%d %s", i+1, actor.Name)
+		if selected {
+			nameLine += " [目标]"
+		}
+		lines = append(lines, wrapLine(nameLine, cellWidth-2)...)
+		lines = append(lines, wrapLine(combatActorTextClean("", actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, engine.DescribeStatuses(actor.Statuses)), cellWidth-2)...)
+		content := strings.Join(lines, "\n")
+		style := cellStyle.Width(cellWidth)
+		if selected {
+			style = style.BorderForeground(lipgloss.Color("221")).Background(lipgloss.Color("236"))
+		}
+		parts = append(parts, style.Render(content))
+	}
+	body := joinStripRows(parts, cols)
+	return containerStyle.Width(width).Render(theme.Accent.Render(title) + "\n" + body)
+}
+
+func renderEnemyStripClean(theme Theme, title string, enemies []engine.CombatEnemy, target engine.CombatTarget, width int) string {
+	if len(enemies) == 0 {
+		return theme.PanelAlt.Copy().Padding(0, 1).Width(width).Render(theme.Muted.Render(title + " empty"))
+	}
+	contentWidth := panelContentWidth(width)
+	cols := adaptiveStripColumns(contentWidth, len(enemies))
+	cellWidth := adaptiveStripCellWidth(contentWidth, cols)
+	containerStyle := theme.PanelAlt.Copy().Padding(0, 1)
+	cellStyle := theme.PanelAlt.Copy().Padding(0, 1)
+	parts := make([]string, 0, len(enemies))
+	for i, enemy := range enemies {
+		selected := target.Kind == engine.CombatTargetEnemy && target.Index == i
+		lines := []string{}
+		nameLine := fmt.Sprintf("M%d %s", i+1, styledEnemyName(theme, enemy.Name))
+		if selected {
+			nameLine += " [目标]"
+		}
+		lines = append(lines, wrapLine(nameLine, cellWidth-2)...)
+		lines = append(lines, wrapLine(combatEnemyTextClean(i+1, styledEnemyName(theme, enemy.Name), enemy.HP, enemy.MaxHP, enemy.Block, engine.DescribeStatuses(enemy.Statuses), ""), cellWidth-2)...)
+		content := strings.Join(lines, "\n")
+		style := cellStyle.Width(cellWidth)
+		if selected {
+			style = style.BorderForeground(lipgloss.Color("221")).Background(lipgloss.Color("236"))
+		}
+		parts = append(parts, style.Render(content))
+	}
+	body := joinStripRows(parts, cols)
+	return containerStyle.Width(width).Render(theme.Accent.Render(title) + "\n" + body)
+}
+
 func RenderCombat(theme Theme, lib *content.Library, run *engine.RunState, combat *engine.CombatState, selected int, selectedPotion int, potionMode bool, pane int, topPage int, logPage int, target engine.CombatTarget, width int, height int) string {
 	viewport := viewportWidth(width, 100)
 	totalWidth := max(30, viewport-2)
@@ -493,8 +615,8 @@ func RenderCombat(theme Theme, lib *content.Library, run *engine.RunState, comba
 	topRow := renderCombatTopOverviewRow(theme, lib, run, combat, focusEnemy, target, pane, topPage, totalWidth, height, combat.Turn, len(hand), energy, maxEnergy, len(drawPile), len(discardPile), len(exhaustPile), selectedPotion, potionMode)
 	keyBar := renderSinglePlayerCombatKeyBar(theme, totalWidth)
 
-	friendRow := renderActorStrip(theme, "友方战线", engine.PartyMembersView(combat), target, true, totalWidth)
-	enemyRow := renderEnemyStrip(theme, "敌方战线", combat.Enemies, target, totalWidth)
+	friendRow := renderActorStripClean(theme, "\u53cb\u65b9\u6218\u7ebf", engine.PartyMembersView(combat), target, true, totalWidth)
+	enemyRow := renderEnemyStripClean(theme, "\u654c\u65b9\u6218\u7ebf", combat.Enemies, target, totalWidth)
 
 	handPreferredWidth := totalWidth * 5 / 8
 	if len(hand) >= 5 {
@@ -530,26 +652,26 @@ func RenderCombat(theme Theme, lib *content.Library, run *engine.RunState, comba
 			Selected: potionMode && i == selectedPotion,
 		})
 	}
-	handTitle := "手牌"
-	handHint := "上下选择当前模式项目，左右切目标，回车执行，z 切换手牌/药水，e 结束回合，tab 切右侧信息面板"
+	handTitle := "\u624b\u724c"
+	handHint := "\u4e0a\u4e0b\u9009\u62e9\u5f53\u524d\u6a21\u5f0f\u9879\uff0c\u5de6\u53f3\u5207\u76ee\u6807\uff0c\u56de\u8f66\u6267\u884c\uff0cz \u5207\u6362\u624b\u724c/\u836f\u6c34\uff0ce \u7ed3\u675f\u56de\u5408\uff0cTab \u5207\u68c0\u89c6"
 	if potionMode {
-		handTitle = "手牌 [药水模式]"
+		handTitle = "\u624b\u724c [\u836f\u6c34\u6a21\u5f0f]"
 	}
 	handPanel := renderCombatActionPanel(theme, bottomLeftWidth, handContentWidth, handTitle, handHint, handItems, potionItems)
 	logPanel := renderCombatLogPanelStyled(theme, combat.Log, logPage, bottomRightWidth, logContentWidth, height, logMode, singlePlayerCombatLogTokens(theme, lib, run, combat))
 	bottomRow := renderCombatTopSummaryPanels(handPanel, logPanel, stackedBottom)
 
 	header := []string{
-		theme.Title.Render("战斗"),
-		theme.Subtitle.Render(fmt.Sprintf("队伍 %d 人 | 敌方 %d 体", 1+len(combat.Allies), len(combat.Enemies))),
+		theme.Title.Render("\u6218\u6597"),
+		theme.Subtitle.Render(fmt.Sprintf("\u961f\u4f0d %d \u4eba | \u654c\u65b9 %d \u4f53", 1+len(combat.Allies), len(combat.Enemies))),
 	}
 	return strings.Join(append(header, "", keyBar, topRow, friendRow, enemyRow, bottomRow), "\n")
 }
 
 func renderSinglePlayerCombatKeyBar(theme Theme, width int) string {
-	hints := []string{"上下: 选当前模式项", "左右: 切目标", "[/]: 顶栏翻页", ",/.: 日志翻页", "Enter: 执行当前项", "1-6: 切检视页", "z: 切换手牌/药水", "e: 结束回合", "Tab: 切右侧信息"}
+	hints := []string{"\u4e0a/\u4e0b: \u9009\u5f53\u524d\u9879", "\u5de6/\u53f3: \u5207\u76ee\u6807", "[/]: \u68c0\u89c6\u7ffb\u9875", ",/.: \u65e5\u5fd7\u7ffb\u9875", "Enter: \u6267\u884c\u5f53\u524d\u9879", "1-6: \u5207\u68c0\u89c6\u9875", "z: \u5207\u6362\u624b\u724c/\u836f\u6c34", "e: \u7ed3\u675f\u56de\u5408", "Tab: \u5207\u8fb9\u680f"}
 	contentWidth := panelContentWidth(width)
-	lines := []string{theme.Accent.Render("当前按键")}
+	lines := []string{theme.Accent.Render("\u5f53\u524d\u6309\u952e")}
 	for _, line := range wrapLine(strings.Join(hints, " | "), contentWidth) {
 		lines = append(lines, theme.Muted.Render(line))
 	}
@@ -562,15 +684,15 @@ func RenderPotionReplace(theme Theme, lib *content.Library, player engine.Player
 	items := make([]string, 0, len(player.Potions)+1)
 	for i, potionID := range player.Potions {
 		potion := lib.Potions[potionID]
-		items = append(items, fmt.Sprintf("替换 %d. %s | %s", i+1, potion.Name, potion.Description))
+		items = append(items, fmt.Sprintf("\u66ff\u6362 %d. %s | %s", i+1, potion.Name, potion.Description))
 	}
-	items = append(items, "丢弃新药水")
+	items = append(items, "\u4e22\u5f03\u65b0\u836f\u6c34")
 	selected = clampSelection(selected, len(items))
 	pending := lib.Potions[pendingPotionID]
 	lines := []string{
-		theme.Title.Render("药水栏已满"),
-		theme.Subtitle.Render(fmt.Sprintf("新获得: %s | %s", pending.Name, pending.Description)),
-		theme.Muted.Render(fmt.Sprintf("当前药水 %d/%d", len(player.Potions), engine.EffectivePotionCapacity(lib, player))),
+		theme.Title.Render("\u836f\u6c34\u680f\u5df2\u6ee1"),
+		theme.Subtitle.Render(fmt.Sprintf("\u65b0\u83b7\u5f97: %s | %s", pending.Name, pending.Description)),
+		theme.Muted.Render(fmt.Sprintf("\u5f53\u524d\u836f\u6c34 %d/%d", len(player.Potions), engine.EffectivePotionCapacity(lib, player))),
 		"",
 	}
 	for i, item := range items {
@@ -586,33 +708,61 @@ func RenderPotionReplace(theme Theme, lib *content.Library, player engine.Player
 }
 
 func RenderReward(theme Theme, lib *content.Library, reward engine.RewardState, selected int, width int) string {
-	panelWidth := fitPanelWidth(width, 76, 4)
+	return RenderRewardDetailed(theme, lib, reward, selected, width)
+}
+
+func RenderRewardDetailed(theme Theme, lib *content.Library, reward engine.RewardState, selected int, width int) string {
+	panelWidth := fitPanelWidth(width, 84, 4)
 	contentWidth := panelContentWidth(panelWidth)
 	lines := []string{
-		theme.Title.Render("战利品"),
-		theme.Subtitle.Render(fmt.Sprintf("金币 +%d", reward.Gold)),
+		theme.Title.Render("\u6218\u5229\u54c1"),
+		theme.Subtitle.Render(fmt.Sprintf("\u91d1\u5e01 +%d", reward.Gold)),
 		"",
 	}
 	if reward.RelicID != "" {
-		lines = append(lines, theme.Good.Render("遗物: "+lib.Relics[reward.RelicID].Name))
+		relic := lib.Relics[reward.RelicID]
+		lines = append(lines, theme.Good.Render("\u9057\u7269: "+relic.Name))
+		for _, line := range wrapLine(relic.Description, contentWidth) {
+			lines = append(lines, theme.Muted.Render(line))
+		}
 	}
 	if reward.EquipmentID != "" {
-		lines = append(lines, theme.Good.Render("装备: "+lib.Equipments[reward.EquipmentID].Name+" (选牌后比较)"))
+		equipment := lib.Equipments[reward.EquipmentID]
+		lines = append(lines, theme.Good.Render("\u88c5\u5907: "+equipment.Name+" (\u9009\u724c\u540e\u5bf9\u6bd4)"))
+		for _, line := range wrapLine(equipment.Description, contentWidth) {
+			lines = append(lines, theme.Muted.Render(line))
+		}
 	}
 	if reward.PotionID != "" {
-		lines = append(lines, theme.Good.Render("药水: "+lib.Potions[reward.PotionID].Name))
+		potion := lib.Potions[reward.PotionID]
+		lines = append(lines, theme.Good.Render("\u836f\u6c34: "+potion.Name))
+		for _, line := range wrapLine(potion.Description, contentWidth) {
+			lines = append(lines, theme.Muted.Render(line))
+		}
 	}
-	lines = append(lines, "", theme.Accent.Render("选一张卡加入牌组"))
+	lines = append(lines, "", theme.Accent.Render("\u9009\u62e9\u4e00\u5f20\u5361\u52a0\u5165\u724c\u7ec4"))
 	for i, card := range reward.CardChoices {
 		kind := primaryCardKind(card.Tags)
-		line := truncateASCII(fmt.Sprintf("%d. %s %s | %s", i+1, renderCardKindChip(theme, kind), styledCardName(theme, card.Name, kind), engine.DescribeEffects(lib, card.Effects)), contentWidth)
+		line := truncateASCII(fmt.Sprintf("%d. %s %s | 费用 %d | %s", i+1, renderCardKindChip(theme, kind), styledCardName(theme, card.Name, kind), card.Cost, engine.DescribeEffects(lib, card.Effects)), contentWidth)
 		if i == selected {
 			lines = append(lines, theme.Selected.Render(line))
 		} else {
 			lines = append(lines, theme.Normal.Render(line))
 		}
 	}
-	lines = append(lines, "", theme.Muted.Render("回车确认，s 跳过"))
+	if len(reward.CardChoices) > 0 && selected >= 0 && selected < len(reward.CardChoices) {
+		card := reward.CardChoices[selected]
+		lines = append(lines, "", theme.Accent.Render("\u5f53\u524d\u9884\u89c8"))
+		lines = append(lines, theme.Subtitle.Render(fmt.Sprintf("%s | 费用 %d | %s", card.Name, card.Cost, strings.Join(card.Tags, ", "))))
+		for _, line := range wrapLine(card.Description, contentWidth) {
+			lines = append(lines, theme.Normal.Render(line))
+		}
+		lines = append(lines, theme.Muted.Render("\u5f53\u524d\u6548\u679c: "+engine.DescribeEffects(lib, card.Effects)))
+		if len(card.UpgradeEffects) > 0 {
+			lines = append(lines, theme.Muted.Render("\u5347\u7ea7\u9884\u89c8: "+engine.DescribeEffects(lib, card.UpgradeEffects)))
+		}
+	}
+	lines = append(lines, "", theme.Muted.Render("\u56de\u8f66\u786e\u8ba4\uff0cs \u8df3\u8fc7"))
 	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
 }
 
@@ -621,11 +771,11 @@ func RenderEquipment(theme Theme, lib *content.Library, offer engine.EquipmentOf
 	contentWidth := panelContentWidth(panelWidth)
 	candidate := lib.Equipments[offer.EquipmentID]
 	lines := []string{
-		theme.Title.Render("装备对比"),
+		theme.Title.Render("\u88c5\u5907\u5bf9\u6bd4"),
 		theme.Subtitle.Render(fmt.Sprintf("%s | %s", equipmentSourceLabel(offer.Source, offer.Price), engine.EquipmentSlotName(offer.Slot))),
 		"",
-		theme.Good.Render("新装备: " + candidate.Name + " [" + equipmentRarityLabel(candidate.Rarity) + "]"),
-		theme.Muted.Render(fmt.Sprintf("估值 %d", offer.CandidateScore)),
+		theme.Good.Render("\u65b0\u88c5\u5907: " + candidate.Name + " [" + equipmentRarityLabel(candidate.Rarity) + "]"),
+		theme.Muted.Render(fmt.Sprintf("\u4f30\u503c %d", offer.CandidateScore)),
 		"",
 	}
 	for _, line := range wrapLine(candidate.Description, contentWidth) {
@@ -635,19 +785,19 @@ func RenderEquipment(theme Theme, lib *content.Library, offer engine.EquipmentOf
 
 	if offer.CurrentEquipmentID != "" {
 		current := lib.Equipments[offer.CurrentEquipmentID]
-		lines = append(lines, theme.Normal.Render("当前装备: "+current.Name+" ["+equipmentRarityLabel(current.Rarity)+"]"))
+		lines = append(lines, theme.Normal.Render("\u5f53\u524d\u88c5\u5907: "+current.Name+" ["+equipmentRarityLabel(current.Rarity)+"]"))
 		for _, line := range wrapLine(current.Description, contentWidth) {
 			lines = append(lines, theme.Normal.Render(line))
 		}
-		lines = append(lines, theme.Muted.Render(fmt.Sprintf("估值 %d", offer.CurrentScore)))
+		lines = append(lines, theme.Muted.Render(fmt.Sprintf("\u4f30\u503c %d", offer.CurrentScore)))
 		delta := offer.CandidateScore - offer.CurrentScore
 		if delta >= 0 {
-			lines = append(lines, "", theme.Good.Render(fmt.Sprintf("预估提升 %+d", delta)))
+			lines = append(lines, "", theme.Good.Render(fmt.Sprintf("\u9884\u4f30\u63d0\u5347 %+d", delta)))
 		} else {
-			lines = append(lines, "", theme.Bad.Render(fmt.Sprintf("预估下降 %d", delta)))
+			lines = append(lines, "", theme.Bad.Render(fmt.Sprintf("\u9884\u4f30\u4e0b\u964d %d", delta)))
 		}
 	} else {
-		lines = append(lines, theme.Muted.Render("当前槽位为空"))
+		lines = append(lines, theme.Muted.Render("\u5f53\u524d\u69fd\u4f4d\u4e3a\u7a7a"))
 	}
 
 	options := equipmentOptions(offer)
@@ -661,7 +811,7 @@ func RenderEquipment(theme Theme, lib *content.Library, offer engine.EquipmentOf
 		}
 	}
 
-	lines = append(lines, "", theme.Muted.Render("回车确认，esc 返回"))
+	lines = append(lines, "", theme.Muted.Render("\u56de\u8f66\u786e\u8ba4\uff0cEsc \u8fd4\u56de"))
 	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
 }
 
@@ -680,7 +830,7 @@ func RenderDeckAction(theme Theme, lib *content.Library, run *engine.RunState, t
 	}
 	lines = append(lines, "")
 	if len(indexes) == 0 {
-		lines = append(lines, theme.Muted.Render("当前没有可操作的卡牌。"))
+		lines = append(lines, theme.Muted.Render("当前没有可用于此操作的卡牌。"))
 	} else {
 		for i := window.Start; i < window.End; i++ {
 			deckIndex := indexes[i]
@@ -698,7 +848,7 @@ func RenderDeckAction(theme Theme, lib *content.Library, run *engine.RunState, t
 			}
 		}
 	}
-	lines = append(lines, "", theme.Muted.Render("回车确认，esc 返回"))
+	lines = append(lines, "", theme.Muted.Render("回车确认，Esc 返回"))
 	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
 }
 
@@ -742,7 +892,7 @@ func RenderShop(theme Theme, run *engine.RunState, shop engine.ShopState, select
 			lines = append(lines, theme.Normal.Render(line))
 		}
 	}
-	lines = append(lines, "", theme.Muted.Render("回车购买或进入服务，l 离开"))
+	lines = append(lines, "", theme.Muted.Render("回车购买或打开服务，L 离开"))
 	if len(shop.Log) > 0 {
 		lines = append(lines, "", theme.Good.Render(strings.Join(shop.Log, " ")))
 	}
@@ -751,12 +901,12 @@ func RenderShop(theme Theme, run *engine.RunState, shop engine.ShopState, select
 
 func RenderRest(theme Theme, run *engine.RunState, selected int, log []string, width int) string {
 	options := []string{
-		"休息: 回复约 33% 最大生命",
-		"锻造: 选择一张可升级卡牌",
+		"休息：恢复 33% 最大生命",
+		"锻造：选择一张卡升级",
 	}
 	lines := []string{
 		theme.Title.Render("篝火"),
-		theme.Subtitle.Render(fmt.Sprintf("生命 %d/%d", run.Player.HP, run.Player.MaxHP)),
+		theme.Subtitle.Render(fmt.Sprintf("HP %d/%d", run.Player.HP, run.Player.MaxHP)),
 		"",
 	}
 	for i, option := range options {
@@ -777,18 +927,18 @@ func RenderRest(theme Theme, run *engine.RunState, selected int, log []string, w
 func RenderProfile(theme Theme, profile engine.Profile, width int) string {
 	lines := []string{
 		theme.Title.Render("档案"),
-		theme.Subtitle.Render(fmt.Sprintf("局外货币 %d", profile.MetaCurrency)),
+		theme.Subtitle.Render(fmt.Sprintf("元货币 %d", profile.MetaCurrency)),
 		"",
 		theme.Normal.Render("已解锁职业: " + strings.Join(profile.UnlockedClasses, ", ")),
-		theme.Normal.Render(fmt.Sprintf("永久加成: 生命 +%d, 金币 +%d, 额外药水位 +%d", profile.Perks["bonus_max_hp"], profile.Perks["bonus_start_gold"], profile.Perks["extra_potion_slot"])),
+		theme.Normal.Render(fmt.Sprintf("永久加成: 最大生命 +%d，初始金币 +%d，额外药水槽 +%d", profile.Perks["bonus_max_hp"], profile.Perks["bonus_start_gold"], profile.Perks["extra_potion_slot"])),
 		"",
-		theme.Muted.Render("任意键返回"),
+		theme.Muted.Render("按任意键返回"),
 	}
 	return theme.Panel.Width(fitPanelWidth(width, 72, 4)).Render(strings.Join(lines, "\n"))
 }
 
 func RenderSummary(theme Theme, run *engine.RunState, width int) string {
-	title := "冒险结束"
+	title := "冒险完成"
 	statusStyle := theme.Good
 	if run.Status == engine.RunStatusLost {
 		statusStyle = theme.Bad
@@ -797,8 +947,8 @@ func RenderSummary(theme Theme, run *engine.RunState, width int) string {
 	lines := []string{
 		theme.Title.Render(title),
 		statusStyle.Render(fmt.Sprintf("结果: %s", run.Status)),
-		theme.Normal.Render(fmt.Sprintf("到达第 %d 幕，清理层数 %d", run.Act, run.Stats.ClearedFloors)),
-		theme.Normal.Render(fmt.Sprintf("战斗胜利 %d，精英 %d，Boss %d", run.Stats.CombatsWon, run.Stats.ElitesWon, run.Stats.BossesWon)),
+		theme.Normal.Render(fmt.Sprintf("抵达 Act %d，清理 %d 层", run.Act, run.Stats.ClearedFloors)),
+		theme.Normal.Render(fmt.Sprintf("胜利 %d，精英 %d，Boss %d", run.Stats.CombatsWon, run.Stats.ElitesWon, run.Stats.BossesWon)),
 		theme.Normal.Render(fmt.Sprintf("最终生命 %d/%d，金币 %d，牌组 %d", run.Player.HP, run.Player.MaxHP, run.Player.Gold, len(run.Player.Deck))),
 		"",
 		theme.Muted.Render("按 q 退出"),
@@ -808,7 +958,7 @@ func RenderSummary(theme Theme, run *engine.RunState, width int) string {
 
 func renderActorStrip(theme Theme, title string, actors []engine.CombatActor, target engine.CombatTarget, friendly bool, width int) string {
 	if len(actors) == 0 {
-		return theme.PanelAlt.Copy().Padding(0, 1).Width(width).Render(theme.Muted.Render(title + "为空"))
+		return theme.PanelAlt.Copy().Padding(0, 1).Width(width).Render(theme.Muted.Render(title + "涓虹┖"))
 	}
 	contentWidth := panelContentWidth(width)
 	cols := adaptiveStripColumns(contentWidth, len(actors))
@@ -821,7 +971,7 @@ func renderActorStrip(theme Theme, title string, actors []engine.CombatActor, ta
 		lines := []string{}
 		nameLine := fmt.Sprintf("P%d %s", i+1, actor.Name)
 		if selected {
-			nameLine += " [目标]"
+			nameLine += " [鐩爣]"
 		}
 		lines = append(lines, wrapLine(nameLine, cellWidth-2)...)
 		lines = append(lines, wrapLine(combatActorText("", actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, engine.DescribeStatuses(actor.Statuses)), cellWidth-2)...)
@@ -838,7 +988,7 @@ func renderActorStrip(theme Theme, title string, actors []engine.CombatActor, ta
 
 func renderEnemyStrip(theme Theme, title string, enemies []engine.CombatEnemy, target engine.CombatTarget, width int) string {
 	if len(enemies) == 0 {
-		return theme.PanelAlt.Copy().Padding(0, 1).Width(width).Render(theme.Muted.Render(title + "为空"))
+		return theme.PanelAlt.Copy().Padding(0, 1).Width(width).Render(theme.Muted.Render(title + "涓虹┖"))
 	}
 	contentWidth := panelContentWidth(width)
 	cols := adaptiveStripColumns(contentWidth, len(enemies))
@@ -851,7 +1001,7 @@ func renderEnemyStrip(theme Theme, title string, enemies []engine.CombatEnemy, t
 		lines := []string{}
 		nameLine := fmt.Sprintf("M%d %s", i+1, styledEnemyName(theme, enemy.Name))
 		if selected {
-			nameLine += " [目标]"
+			nameLine += " [鐩爣]"
 		}
 		lines = append(lines, wrapLine(nameLine, cellWidth-2)...)
 		lines = append(lines, wrapLine(combatEnemyText(i+1, styledEnemyName(theme, enemy.Name), enemy.HP, enemy.MaxHP, enemy.Block, engine.DescribeStatuses(enemy.Statuses), ""), cellWidth-2)...)
@@ -907,7 +1057,7 @@ func joinStripRows(parts []string, cols int) string {
 func renderCombatTabs(theme Theme, selected int) string {
 	parts := make([]string, 0, engine.CombatInspectPaneCount)
 	for i := 0; i < engine.CombatInspectPaneCount; i++ {
-		label := fmt.Sprintf("%d.%s", i+1, engine.CombatInspectPaneName(i))
+		label := fmt.Sprintf("%d.%s", i+1, localizedCombatInspectPaneName(i))
 		if i == selected%engine.CombatInspectPaneCount {
 			parts = append(parts, theme.Selected.Render(label))
 		} else {
@@ -1029,9 +1179,9 @@ func renderCombatActionPanel(theme Theme, panelWidth int, contentWidth int, titl
 	if subtitle != "" {
 		lines = append(lines, theme.Subtitle.Render(subtitle), "")
 	}
-	appendCompactCombatSelectionSection(&lines, theme, contentWidth, "手牌槽", "当前没有可打出的手牌。", handItems, false)
+	appendCompactCombatSelectionSection(&lines, theme, contentWidth, "\u624b\u724c\u69fd", "\u5f53\u524d\u6ca1\u6709\u53ef\u6253\u51fa\u7684\u624b\u724c\u3002", handItems, false)
 	lines = append(lines, "")
-	appendCompactCombatSelectionSection(&lines, theme, contentWidth, "药水槽", "当前没有可用药水。", potionItems, false)
+	appendCompactCombatSelectionSection(&lines, theme, contentWidth, "\u836f\u6c34\u69fd", "\u5f53\u524d\u6ca1\u6709\u53ef\u7528\u836f\u6c34\u3002", potionItems, false)
 	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
 }
 
@@ -1069,18 +1219,18 @@ func renderCombatEnemySummaryPanel(theme Theme, name string, hp int, maxHP int, 
 		return ""
 	}
 	enemyLines := []string{
-		theme.Accent.Render("敌方信息"),
+		theme.Accent.Render("\u654c\u65b9\u4fe1\u606f"),
 		theme.Title.Render(styledEnemyName(theme, name)),
-		theme.Normal.Render(fmt.Sprintf("HP %d/%d  Block %d", hp, maxHP, block)),
+		theme.Normal.Render(fmt.Sprintf("HP %d/%d  \u683c\u6321 %d", hp, maxHP, block)),
 	}
-	appendStatusChipLine(&enemyLines, theme, panelContentWidth(panelWidth), "当前目标", focusLabel, true)
+	appendStatusChipLine(&enemyLines, theme, panelContentWidth(panelWidth), "\u5f53\u524d\u76ee\u6807", focusLabel, true)
 	if status != "" {
-		enemyLines = append(enemyLines, theme.Normal.Render("状态: "+status))
+		enemyLines = append(enemyLines, theme.Normal.Render("\u72b6\u6001: "+status))
 	} else {
-		enemyLines = append(enemyLines, theme.Muted.Render("状态: 无"))
+		enemyLines = append(enemyLines, theme.Muted.Render("\u72b6\u6001: \u65e0"))
 	}
 	if intent != "" {
-		enemyLines = append(enemyLines, "", theme.Subtitle.Render("当前意图"))
+		enemyLines = append(enemyLines, "", theme.Subtitle.Render("\u5f53\u524d\u610f\u56fe"))
 		for _, line := range wrapLine(intent, panelContentWidth(panelWidth)) {
 			enemyLines = append(enemyLines, theme.Normal.Render(line))
 		}
@@ -1113,29 +1263,29 @@ func renderCombatSeatStatusPanel(theme Theme, lib *content.Library, combat *engi
 		classID = run.Player.ClassID
 	}
 	lines := []string{
-		theme.Accent.Render("自身状态"),
+		theme.Accent.Render("\u81ea\u8eab\u72b6\u6001"),
 		theme.Title.Render(styledClassName(theme, actor.Name, classID)),
-		theme.Normal.Render(fmt.Sprintf("HP %d/%d | 格挡 %d | 能量 %d/%d", actor.HP, actor.MaxHP, actor.Block, actor.Energy, actor.MaxEnergy)),
+		theme.Normal.Render(fmt.Sprintf("HP %d/%d | \u683c\u6321 %d | \u80fd\u91cf %d/%d", actor.HP, actor.MaxHP, actor.Block, actor.Energy, actor.MaxEnergy)),
 	}
 	if status := engine.DescribeStatuses(actor.Statuses); status != "" {
-		for _, line := range wrapLine("状态: "+status, panelContentWidth(panelWidth)) {
+		for _, line := range wrapLine("\u72b6\u6001: "+status, panelContentWidth(panelWidth)) {
 			lines = append(lines, theme.Normal.Render(line))
 		}
 	} else {
-		lines = append(lines, theme.Muted.Render("状态: 无"))
+		lines = append(lines, theme.Muted.Render("\u72b6\u6001: \u65e0"))
 	}
 	if run != nil {
 		potionCount := len(run.Player.Potions)
 		if seat := engine.CombatSeatView(combat, seatIndex); seat != nil {
 			potionCount = len(seat.Potions)
 		}
-		lines = append(lines, theme.Muted.Render(fmt.Sprintf("金币 %d | 药水 %d/%d | 牌组 %d", run.Player.Gold, potionCount, engine.EffectivePotionCapacity(lib, run.Player), len(run.Player.Deck))))
+		lines = append(lines, theme.Muted.Render(fmt.Sprintf("\u91d1\u5e01 %d | \u836f\u6c34 %d/%d | \u724c\u7ec4 %d", run.Player.Gold, potionCount, engine.EffectivePotionCapacity(lib, run.Player), len(run.Player.Deck))))
 	}
 	for _, pending := range engine.PendingNextCardRepeatDescriptions(combat, seatIndex) {
-		lines = append(lines, theme.Selected.Width(panelContentWidth(panelWidth)).Render(truncateASCII("连发待机: "+pending, panelContentWidth(panelWidth))))
+		lines = append(lines, theme.Selected.Width(panelContentWidth(panelWidth)).Render(truncateASCII("\u8fde\u53d1\u5f85\u673a: "+pending, panelContentWidth(panelWidth))))
 	}
 	lines = append(lines, "")
-	appendStatusChipLine(&lines, theme, panelContentWidth(panelWidth), "当前目标", engine.DescribeCombatTarget(combat, target), true)
+	appendStatusChipLine(&lines, theme, panelContentWidth(panelWidth), "\u5f53\u524d\u76ee\u6807", engine.DescribeCombatTarget(combat, target), true)
 	lines = fixedPanelLines(lines, maxLines, theme, panelContentWidth(panelWidth))
 	return theme.PanelAlt.Width(panelWidth).Render(strings.Join(lines, "\n"))
 }
@@ -1228,22 +1378,22 @@ func renderCombatSeatInfoPanel(theme Theme, lib *content.Library, run *engine.Ru
 	if seat := engine.CombatSeatView(combat, seatIndex); seat != nil {
 		potions = append([]string{}, seat.Potions...)
 	}
-	potionSummary := fmt.Sprintf("药水 %d/%d", len(potions), engine.EffectivePotionCapacity(lib, run.Player))
+	potionSummary := fmt.Sprintf("\u836f\u6c34 %d/%d", len(potions), engine.EffectivePotionCapacity(lib, run.Player))
 	if potionMode && len(potions) > 0 {
 		selectedPotion = min(selectedPotion, len(potions)-1)
 		potion := lib.Potions[potions[selectedPotion]]
-		potionSummary += fmt.Sprintf(" | 当前 %d.%s", selectedPotion+1, potion.Name)
+		potionSummary += fmt.Sprintf(" | \u5f53\u524d %d.%s", selectedPotion+1, potion.Name)
 	}
 	headerLines := []string{
-		theme.Accent.Render("战斗信息"),
-		theme.Subtitle.Render(fmt.Sprintf("回合 %d | 手牌 %d | 能量 %d/%d", turn, handCount, energy, maxEnergy)),
-		theme.Subtitle.Render(fmt.Sprintf("抽牌堆 %d | 弃牌堆 %d | 消耗堆 %d", drawCount, discardCount, exhaustCount)),
+		theme.Accent.Render("\u6218\u6597\u4fe1\u606f"),
+		theme.Subtitle.Render(fmt.Sprintf("\u56de\u5408 %d | \u624b\u724c %d | \u80fd\u91cf %d/%d", turn, handCount, energy, maxEnergy)),
+		theme.Subtitle.Render(fmt.Sprintf("\u62bd\u724c\u5806 %d | \u5f03\u724c\u5806 %d | \u6d88\u8017\u5806 %d", drawCount, discardCount, exhaustCount)),
 		theme.Subtitle.Render(potionSummary),
-		theme.Muted.Render(fmt.Sprintf("检视页: %s", engine.CombatInspectPaneName(pane))),
+		theme.Muted.Render(fmt.Sprintf("\u68c0\u89c6\u9875: %s", localizedCombatInspectPaneName(pane))),
 		renderCombatTabs(theme, pane),
 	}
 	for _, pending := range engine.PendingNextCardRepeatDescriptions(combat, seatIndex) {
-		headerLines = append(headerLines, theme.Selected.Render("连发待机 | "+pending))
+		headerLines = append(headerLines, theme.Selected.Render("\u8fde\u53d1\u5f85\u673a | "+pending))
 	}
 	bodyLines := []string{}
 	for _, line := range engine.CombatInspectLinesForSeat(lib, run, combat, seatIndex, pane) {
@@ -1267,8 +1417,8 @@ func fixedPanelLines(lines []string, maxLines int, theme Theme, width int) []str
 		remaining := max(0, len(lines)-bodyLines)
 		lines = append([]string{}, lines[:bodyLines]...)
 		lines = append(lines,
-			theme.Muted.Render(truncateASCII(fmt.Sprintf("第 1/%d 页", pageCount), width)),
-			theme.Muted.Render(truncateASCII(fmt.Sprintf("还有 %d 行...", remaining), width)),
+			theme.Muted.Render(truncateASCII(fmt.Sprintf("\u7b2c 1/%d \u9875", pageCount), width)),
+			theme.Muted.Render(truncateASCII(fmt.Sprintf("\u8fd8\u6709 %d \u884c...", remaining), width)),
 		)
 	}
 	for len(lines) < maxLines {
@@ -1315,8 +1465,8 @@ func fixedPanelBodyPageLines(lines []string, page int, maxLines int, theme Theme
 	remaining := max(0, len(lines)-end)
 	visible := append([]string{}, lines[start:end]...)
 	visible = append(visible,
-		theme.Muted.Render(truncateASCII(fmt.Sprintf("第 %d/%d 页", page+1, pageCount), width)),
-		theme.Muted.Render(truncateASCII(fmt.Sprintf("还有 %d 行...", remaining), width)),
+		theme.Muted.Render(truncateASCII(fmt.Sprintf("\u7b2c %d/%d \u9875", page+1, pageCount), width)),
+		theme.Muted.Render(truncateASCII(fmt.Sprintf("\u8fd8\u6709 %d \u884c...", remaining), width)),
 	)
 	for len(visible) < maxLines {
 		visible = append(visible, "")
@@ -1327,15 +1477,15 @@ func fixedPanelBodyPageLines(lines []string, page int, maxLines int, theme Theme
 func combatLogMode(totalWidth int, height int, handCount int, stacked bool) string {
 	switch {
 	case stacked:
-		return "紧凑"
+		return "\u7d27\u51d1"
 	case totalWidth < 92:
-		return "紧凑"
+		return "\u7d27\u51d1"
 	case handCount >= 5:
-		return "紧凑"
+		return "\u7d27\u51d1"
 	case height > 0 && height < 28:
-		return "紧凑"
+		return "\u7d27\u51d1"
 	default:
-		return "展开"
+		return "\u5c55\u5f00"
 	}
 }
 
@@ -1344,13 +1494,13 @@ func renderCombatLogPanel(theme Theme, entries []engine.CombatLogEntry, page int
 }
 
 func renderCombatLogPanelStyled(theme Theme, entries []engine.CombatLogEntry, page int, panelWidth int, contentWidth int, height int, mode string, tokens []styledToken) string {
-	title := "战斗日志"
+	title := "\u6218\u6597\u65e5\u5fd7"
 	if mode != "" {
 		title += " [" + mode + "]"
 	}
 	body := []string{}
 	if len(entries) == 0 {
-		body = append(body, theme.Muted.Render("暂无日志。"))
+		body = append(body, theme.Muted.Render("\u6682\u65e0\u65e5\u5fd7\u3002"))
 	} else {
 		for _, entry := range entries {
 			lineText := styleLogTurnPrefix(theme, applyStyledTokens(fmt.Sprintf("T%d %s", entry.Turn, entry.Text), tokens))
@@ -1373,7 +1523,7 @@ func renderCombatLogPanelStyled(theme Theme, entries []engine.CombatLogEntry, pa
 }
 
 func enhancedCombatLogPanelLineBudget(height int, mode string) int {
-	if mode != "灞曞紑" {
+	if mode != "\u5c55\u5f00" {
 		switch {
 		case height > 0 && height < 28:
 			return 5
@@ -1384,7 +1534,7 @@ func enhancedCombatLogPanelLineBudget(height int, mode string) int {
 		}
 	}
 	switch mode {
-	case "绱у噾":
+	case "\u7d27\u51d1":
 		switch {
 		case height > 0 && height < 28:
 			return 5
@@ -1407,7 +1557,7 @@ func enhancedCombatLogPanelLineBudget(height int, mode string) int {
 
 func combatLogPanelLineBudget(height int, mode string) int {
 	switch mode {
-	case "紧凑":
+	case "compact":
 		if height > 0 && height < 28 {
 			return 5
 		}
@@ -1465,15 +1615,65 @@ func fixedRecentPanelBodyLines(lines []string, page int, maxLines int, theme The
 	return visible
 }
 
+func localizedCombatInspectPaneName(pane int) string {
+	switch pane {
+	case 0:
+		return "概览"
+	case 1:
+		return "抽牌/弃牌"
+	case 2:
+		return "效果"
+	case 3:
+		return "日志"
+	case 4:
+		return "投票"
+	case 5:
+		return "牌组"
+	default:
+		return engine.CombatInspectPaneName(pane)
+	}
+}
+
+func combatActorTextClean(name string, hp int, maxHP int, energy int, maxEnergy int, block int, status string) string {
+	parts := []string{}
+	if strings.TrimSpace(name) != "" {
+		parts = append(parts, name)
+	}
+	parts = append(parts, fmt.Sprintf("HP %d/%d", hp, maxHP))
+	parts = append(parts, fmt.Sprintf("\u683c\u6321 %d", block))
+	if maxEnergy > 0 {
+		parts = append(parts, fmt.Sprintf("\u80fd\u91cf %d/%d", energy, maxEnergy))
+	}
+	if status != "" {
+		parts = append(parts, status)
+	}
+	return strings.Join(parts, " | ")
+}
+
+func combatEnemyTextClean(index int, name string, hp int, maxHP int, block int, status string, intent string) string {
+	label := name
+	if index > 0 {
+		label = fmt.Sprintf("%d. %s", index, name)
+	}
+	parts := []string{label, fmt.Sprintf("HP %d/%d", hp, maxHP), fmt.Sprintf("\u683c\u6321 %d", block)}
+	if intent != "" {
+		parts = append(parts, "\u610f\u56fe "+intent)
+	}
+	if status != "" {
+		parts = append(parts, status)
+	}
+	return strings.Join(parts, " | ")
+}
+
 func combatActorText(name string, hp int, maxHP int, energy int, maxEnergy int, block int, status string) string {
 	parts := []string{}
 	if strings.TrimSpace(name) != "" {
 		parts = append(parts, name)
 	}
 	parts = append(parts, fmt.Sprintf("HP %d/%d", hp, maxHP))
-	parts = append(parts, fmt.Sprintf("格挡 %d", block))
+	parts = append(parts, fmt.Sprintf("鏍兼尅 %d", block))
 	if maxEnergy > 0 {
-		parts = append(parts, fmt.Sprintf("能量 %d/%d", energy, maxEnergy))
+		parts = append(parts, fmt.Sprintf("鑳介噺 %d/%d", energy, maxEnergy))
 	}
 	if status != "" {
 		parts = append(parts, status)
@@ -1486,9 +1686,9 @@ func combatEnemyText(index int, name string, hp int, maxHP int, block int, statu
 	if index > 0 {
 		label = fmt.Sprintf("%d. %s", index, name)
 	}
-	parts := []string{label, fmt.Sprintf("HP %d/%d", hp, maxHP), fmt.Sprintf("格挡 %d", block)}
+	parts := []string{label, fmt.Sprintf("HP %d/%d", hp, maxHP), fmt.Sprintf("鏍兼尅 %d", block)}
 	if intent != "" {
-		parts = append(parts, "意图 "+intent)
+		parts = append(parts, "鎰忓浘 "+intent)
 	}
 	if status != "" {
 		parts = append(parts, status)
@@ -1510,39 +1710,39 @@ func combatCardText(index int, cost int, name string, summary string, targetHint
 func targetHintText(lib *content.Library, card engine.RuntimeCard) string {
 	switch engine.CardTargetKindForCard(lib, card) {
 	case engine.CombatTargetEnemy:
-		return "单体敌方"
+		return "\u5355\u4f53\u654c\u65b9"
 	case engine.CombatTargetEnemies:
-		return "全体敌方"
+		return "\u5168\u4f53\u654c\u65b9"
 	case engine.CombatTargetAlly:
-		return "单体友方"
+		return "\u5355\u4f53\u53cb\u65b9"
 	case engine.CombatTargetAllies:
-		return "全体友方"
+		return "\u5168\u4f53\u53cb\u65b9"
 	default:
-		return "无需选目标"
+		return "\u65e0\u9700\u9009\u76ee\u6807"
 	}
 }
 
 func equipmentOptions(offer engine.EquipmentOfferState) []string {
 	if offer.Source == "shop" && offer.CurrentEquipmentID != "" {
-		return []string{"购买并替换当前装备", "保留当前，取消购买"}
+		return []string{"\u8d2d\u4e70\u5e76\u66ff\u6362\u5f53\u524d\u88c5\u5907", "\u4fdd\u7559\u5f53\u524d\u88c5\u5907"}
 	}
 	if offer.Source == "shop" {
-		return []string{"购买并装备", "取消购买"}
+		return []string{"\u8d2d\u4e70\u5e76\u88c5\u5907", "\u53d6\u6d88\u8d2d\u4e70"}
 	}
 	if offer.CurrentEquipmentID != "" {
-		return []string{"装备新装备并替换当前装备", "保留当前装备"}
+		return []string{"\u88c5\u5907\u65b0\u88c5\u5907\u5e76\u66ff\u6362\u5f53\u524d\u88c5\u5907", "\u4fdd\u7559\u5f53\u524d\u88c5\u5907"}
 	}
-	return []string{"装备新装备", "跳过"}
+	return []string{"\u88c5\u5907\u65b0\u88c5\u5907", "\u8df3\u8fc7"}
 }
 
 func equipmentSourceLabel(source string, price int) string {
 	switch source {
 	case "shop":
-		return fmt.Sprintf("商店 | %d 金币", price)
+		return fmt.Sprintf("\u5546\u5e97 | %d \u91d1\u5e01", price)
 	case "reward":
-		return "战利品"
+		return "\u6218\u5229\u54c1"
 	case "event":
-		return "事件"
+		return "\u4e8b\u4ef6"
 	default:
 		return source
 	}
@@ -1551,22 +1751,22 @@ func equipmentSourceLabel(source string, price int) string {
 func equipmentRarityLabel(rarity string) string {
 	switch rarity {
 	case "starter":
-		return "初始"
+		return "\u521d\u59cb"
 	case "common":
-		return "普通"
+		return "\u666e\u901a"
 	case "uncommon":
-		return "优秀"
+		return "\u4f18\u79c0"
 	case "rare":
-		return "稀有"
+		return "\u7a00\u6709"
 	case "legendary":
-		return "传奇"
+		return "\u4f20\u5947"
 	default:
 		return strings.ToUpper(rarity)
 	}
 }
 
 func describeNode(node engine.Node) string {
-	return fmt.Sprintf("A%d F%d %s", node.Act, node.Floor, engine.NodeKindName(node.Kind))
+	return fmt.Sprintf("A%d F%d %s", node.Act, node.Floor, displayNodeKindLabel(engine.NodeKindName(node.Kind)))
 }
 
 func wrapLine(line string, width int) []string {
