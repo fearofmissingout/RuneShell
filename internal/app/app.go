@@ -111,6 +111,7 @@ type model struct {
 	keys                       keyMap
 	help                       help.Model
 	theme                      ui.Theme
+	baseLib                    *content.Library
 	lib                        *content.Library
 	store                      *storage.Store
 	profile                    engine.Profile
@@ -195,6 +196,8 @@ func Run(lib *content.Library, store *storage.Store) error {
 
 func newModel(lib *content.Library, store *storage.Store, profile engine.Profile, run *engine.RunState) model {
 	menuItems := menuItemsForRun(run)
+	localizedLib := content.LocalizeLibrary(lib, profile.Language)
+	classes := localizedLib.ClassList()
 	createName := newMultiplayerInput("Host", "", 24)
 	createPort := newMultiplayerInput("7777", "", 5)
 	joinAddr := newMultiplayerInput("127.0.0.1:7777", "", 64)
@@ -203,7 +206,8 @@ func newModel(lib *content.Library, store *storage.Store, profile engine.Profile
 	commandInput.Width = 64
 	m := model{
 		now:                       time.Now,
-		lib:                       lib,
+		baseLib:                   lib,
+		lib:                       localizedLib,
 		store:                     store,
 		profile:                   profile,
 		run:                       run,
@@ -211,15 +215,15 @@ func newModel(lib *content.Library, store *storage.Store, profile engine.Profile
 		theme:                     ui.DefaultTheme().WithLanguage(profile.Language),
 		help:                      help.New(),
 		menuItems:                 menuItems,
-		classes:                   lib.ClassList(),
+		classes:                   classes,
 		multiplayerMenuItems:      []string{multiplayerMenuCreate, multiplayerMenuJoin, multiplayerMenuBack},
 		multiplayerCreateName:     createName,
 		multiplayerCreatePort:     createPort,
-		multiplayerCreateClass:    classIndexByID(lib.ClassList(), "vanguard"),
+		multiplayerCreateClass:    classIndexByID(classes, "vanguard"),
 		multiplayerCreateForceNew: true,
 		multiplayerJoinAddr:       joinAddr,
 		multiplayerJoinName:       joinName,
-		multiplayerJoinClass:      classIndexByID(lib.ClassList(), "arcanist"),
+		multiplayerJoinClass:      classIndexByID(classes, "arcanist"),
 		multiplayerCommandInput:   commandInput,
 		keys:                      localizedKeyMap(profile.Language),
 	}
@@ -318,6 +322,8 @@ func (m *model) applyLanguage() {
 	lang := i18n.NormalizeLanguage(m.profile.Language)
 	m.profile.Language = lang
 	m.theme = ui.DefaultTheme().WithLanguage(lang)
+	m.lib = content.LocalizeLibrary(m.baseLib, lang)
+	m.classes = m.lib.ClassList()
 	m.keys = localizedKeyMap(lang)
 	m.multiplayerCreateName.Placeholder = m.theme.Text("multiplayer.placeholder.name")
 	m.multiplayerCreatePort.Placeholder = m.theme.Text("multiplayer.placeholder.port")
@@ -1490,9 +1496,9 @@ func (m model) View() string {
 	case screenDeckAct:
 		body = ui.RenderDeckAction(m.theme, m.lib, m.run, m.deckActionTitle, m.deckActionSubtitle, m.deckActionIndexes, m.index, width)
 	case screenEvent:
-		body = ui.RenderEvent(m.theme, *m.eventState, m.index, width)
+		body = ui.RenderEvent(m.theme, m.lib, *m.eventState, m.index, width)
 	case screenShop:
-		body = ui.RenderShopGrouped(m.theme, m.run, *m.shopState, m.index, width)
+		body = ui.RenderShopGrouped(m.theme, m.lib, m.run, *m.shopState, m.index, width)
 	case screenRest:
 		body = ui.RenderRest(m.theme, m.run, m.index, m.restLog, width)
 	case screenCodex:

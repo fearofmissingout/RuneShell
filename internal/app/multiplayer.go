@@ -278,7 +278,7 @@ func (m model) launchMultiplayerHost() (tea.Model, tea.Cmd) {
 	class := m.classes[m.multiplayerCreateClass]
 	m.multiplayerConnecting = true
 	m.message = m.theme.Text("message.multiplayer.creating_room")
-	return m, startHostedSessionCmd(m.lib, port, name, class.ID, m.profile.Language, m.multiplayerCreateForceNew)
+	return m, startHostedSessionCmd(m.baseLib, port, name, class.ID, m.profile.Language, m.multiplayerCreateForceNew)
 }
 
 func (m model) launchMultiplayerJoin() (tea.Model, tea.Cmd) {

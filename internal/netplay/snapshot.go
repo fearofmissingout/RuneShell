@@ -68,25 +68,26 @@ func (s *server) buildPhaseSnapshotLocked(selfID string, snap *roomSnapshot) {
 	if snap == nil {
 		return
 	}
+	lib := s.localizedLibLocked(selfID)
 	switch s.phase {
 	case phaseLobby:
 		snap.Lobby = s.buildLobbySnapshotLocked()
 	case phaseMap:
 		snap.Map = s.buildMapSnapshotLocked(selfID)
 	case phaseCombat:
-		snap.Combat = s.buildCombatSnapshotLocked(selfID)
+		snap.Combat = buildCombatSnapshot(lib, s.run, s.combat, selfID, s.order, s.players)
 	case phaseReward:
-		snap.Reward = s.buildRewardSnapshotLocked(selfID)
+		snap.Reward = s.buildRewardSnapshotLocked(selfID, lib)
 	case phaseEvent:
-		snap.Event = s.buildEventSnapshotLocked(selfID)
+		snap.Event = s.buildEventSnapshotLocked(selfID, lib)
 	case phaseShop:
-		snap.Shop = s.buildShopSnapshotLocked(selfID)
+		snap.Shop = s.buildShopSnapshotLocked(selfID, lib)
 	case phaseRest:
 		snap.Rest = s.buildRestSnapshotLocked()
 	case phaseEquipment:
-		snap.Equipment = buildEquipmentSnapshot(s.lib, s.equipOffer)
+		snap.Equipment = buildEquipmentSnapshot(lib, s.equipOffer)
 	case phaseDeckAction:
-		snap.Deck = s.buildDeckActionSnapshotLocked(selfID)
+		snap.Deck = s.buildDeckActionSnapshotLocked(selfID, lib)
 	case phaseSummary:
 		snap.Summary = s.buildSummarySnapshotLocked(selfID)
 	}
@@ -104,6 +105,7 @@ func (s *server) buildMapSnapshotLocked(selfID string) *mapSnapshot {
 	if s.run == nil {
 		return nil
 	}
+	lang := s.playerLanguageLocked(selfID)
 	reachable := engine.ReachableNodes(s.run)
 	nodes := make([]nodeSnapshot, 0, len(reachable))
 	for i, node := range reachable {
@@ -112,7 +114,7 @@ func (s *server) buildMapSnapshotLocked(selfID string) *mapSnapshot {
 			Index: i + 1,
 			Floor: node.Floor,
 			Kind:  string(node.Kind),
-			Label: fmt.Sprintf("A%d F%d %s", node.Act, node.Floor, engine.NodeKindName(node.Kind)),
+			Label: fmt.Sprintf("A%d F%d %s", node.Act, node.Floor, engine.NodeKindNameFor(lang, node.Kind)),
 		})
 	}
 	return &mapSnapshot{
@@ -164,7 +166,7 @@ func buildMapTreeSnapshot(graph engine.MapGraph) [][]mapTreeNodeSnapshot {
 }
 
 func (s *server) buildCombatSnapshotLocked(selfID string) *combatSnapshot {
-	return buildCombatSnapshot(s.lib, s.run, s.combat, selfID, s.order, s.players)
+	return buildCombatSnapshot(s.localizedLibLocked(selfID), s.run, s.combat, selfID, s.order, s.players)
 }
 
 func combatSnapshotSeatIndex(selfID string, order []string) int {
@@ -176,8 +178,9 @@ func combatSnapshotSeatIndex(selfID string, order []string) int {
 	return -1
 }
 
-func buildCombatPartySnapshots(combat *engine.CombatState) []actorSnapshot {
+func buildCombatPartySnapshots(lib *content.Library, combat *engine.CombatState) []actorSnapshot {
 	party := make([]actorSnapshot, 0, 1+len(combat.Allies))
+	lang := content.LanguageOf(lib)
 	for i, actor := range engine.PartyMembersView(combat) {
 		classID := ""
 		if i >= 0 && i < len(combat.SeatPlayers) {
@@ -192,23 +195,40 @@ func buildCombatPartySnapshots(combat *engine.CombatState) []actorSnapshot {
 			Energy:    actor.Energy,
 			MaxEnergy: actor.MaxEnergy,
 			Block:     actor.Block,
-			Status:    engine.DescribeStatuses(actor.Statuses),
+			Status:    engine.DescribeStatusesFor(lang, actor.Statuses),
 		})
 	}
 	return party
 }
 
-func buildCombatEnemySnapshots(combat *engine.CombatState) []enemySnapshot {
+func buildCombatEnemySnapshots(lib *content.Library, combat *engine.CombatState) []enemySnapshot {
 	enemies := make([]enemySnapshot, 0, len(combat.Enemies))
+	lang := content.LanguageOf(lib)
 	for i, enemy := range combat.Enemies {
+		name := enemy.Name
+		intent := enemy.CurrentIntent
+		if def, ok := lib.Encounters[enemy.EncounterID]; ok {
+			slotName := def.Name
+			if enemy.Slot > 0 {
+				slotName = fmt.Sprintf("%s #%d", slotName, enemy.Slot+1)
+			}
+			name = slotName
+			if enemy.IntentIndex >= 0 && enemy.IntentIndex < len(def.IntentCycle) {
+				intent = def.IntentCycle[enemy.IntentIndex]
+			}
+		}
+		intentSummary := intent.Description
+		if strings.TrimSpace(intentSummary) == "" {
+			intentSummary = content.DescribeEffects(lib, intent.Effects)
+		}
 		enemies = append(enemies, enemySnapshot{
 			Index:  i + 1,
-			Name:   enemy.Name,
+			Name:   name,
 			HP:     enemy.HP,
 			MaxHP:  enemy.MaxHP,
 			Block:  enemy.Block,
-			Status: engine.DescribeStatuses(enemy.Statuses),
-			Intent: engine.DescribeIntent(enemy.CurrentIntent),
+			Status: engine.DescribeStatusesFor(lang, enemy.Statuses),
+			Intent: intentSummary,
 		})
 	}
 	return enemies
@@ -224,11 +244,40 @@ func buildCombatHandSnapshots(lib *content.Library, handCards []engine.RuntimeCa
 			Kind:       combatSnapshotCardKind(def.Tags),
 			Cost:       def.Cost,
 			Summary:    engine.RuntimeCardStateSummary(lib, card),
-			TargetHint: describeTargetKind(engine.CardTargetKindForCard(lib, card)),
+			TargetHint: combatSnapshotTargetHint(lib, engine.CardTargetKindForCard(lib, card)),
 			Badges:     flagBadges(def.Flags),
 		})
 	}
 	return hand
+}
+
+func combatSnapshotTargetHint(lib *content.Library, kind engine.CombatTargetKind) string {
+	if content.LanguageOf(lib) == i18n.LangEnUS {
+		switch kind {
+		case engine.CombatTargetEnemy:
+			return "Single enemy"
+		case engine.CombatTargetEnemies:
+			return "All enemies"
+		case engine.CombatTargetAlly:
+			return "Single ally"
+		case engine.CombatTargetAllies:
+			return "All allies"
+		default:
+			return "No target"
+		}
+	}
+	switch kind {
+	case engine.CombatTargetEnemy:
+		return "单体敌人"
+	case engine.CombatTargetEnemies:
+		return "全体敌人"
+	case engine.CombatTargetAlly:
+		return "单体友军"
+	case engine.CombatTargetAllies:
+		return "全体友军"
+	default:
+		return "无目标"
+	}
 }
 
 func buildCombatPotionSnapshots(lib *content.Library, potions []string) []string {
@@ -279,8 +328,8 @@ func buildCombatSnapshot(lib *content.Library, run *engine.RunState, combat *eng
 		lang = normalizeLanguage(player.Language)
 	}
 	seatIndex := combatSnapshotSeatIndex(selfID, order)
-	party := buildCombatPartySnapshots(combat)
-	enemies := buildCombatEnemySnapshots(combat)
+	party := buildCombatPartySnapshots(lib, combat)
+	enemies := buildCombatEnemySnapshots(lib, combat)
 	handCards := []engine.RuntimeCard{}
 	if seatIndex >= 0 && seatIndex < len(combat.Seats) {
 		handCards = combat.Seats[seatIndex].Hand
@@ -351,7 +400,7 @@ func (s *server) buildStatsSnapshotLocked(selfID string) *statsSnapshot {
 	}
 }
 
-func (s *server) buildRewardSnapshotLocked(selfID string) *rewardSnapshot {
+func (s *server) buildRewardSnapshotLocked(selfID string, lib *content.Library) *rewardSnapshot {
 	state, run := s.seatContextLocked(selfID)
 	if state == nil || state.Reward == nil {
 		return nil
@@ -359,12 +408,15 @@ func (s *server) buildRewardSnapshotLocked(selfID string) *rewardSnapshot {
 	reward := state.Reward
 	cards := make([]cardSnapshot, 0, len(reward.CardChoices))
 	for i, card := range reward.CardChoices {
+		if localized, ok := lib.Cards[card.ID]; ok {
+			card = localized
+		}
 		cards = append(cards, cardSnapshot{
 			Index:   i + 1,
 			Name:    card.Name,
 			Kind:    combatSnapshotCardKind(card.Tags),
 			Cost:    card.Cost,
-			Summary: engine.DescribeEffects(s.lib, card.Effects),
+			Summary: engine.DescribeEffects(lib, card.Effects),
 			Badges:  flagBadges(card.Flags),
 		})
 	}
@@ -374,16 +426,16 @@ func (s *server) buildRewardSnapshotLocked(selfID string) *rewardSnapshot {
 		Cards:  cards,
 	}
 	if reward.PotionID != "" {
-		snap.Potion = s.lib.Potions[reward.PotionID].Name
+		snap.Potion = lib.Potions[reward.PotionID].Name
 	}
 	if reward.RelicID != "" {
-		relic := s.lib.Relics[reward.RelicID]
+		relic := lib.Relics[reward.RelicID]
 		snap.Relic = relic.Name
 		snap.RelicBadges = flagBadges(relic.Flags)
 	}
 	if reward.EquipmentID != "" && run != nil {
 		if offer, err := engine.BuildEquipmentOffer(s.lib, run.Player, reward.EquipmentID, "reward", 0); err == nil {
-			snap.Equipment = buildEquipmentSnapshot(s.lib, &offer)
+			snap.Equipment = buildEquipmentSnapshot(lib, &offer)
 		}
 	}
 	if coopCards := countSnapshotsWithBadge(cards, "CO-OP"); coopCards > 0 {
@@ -395,45 +447,64 @@ func (s *server) buildRewardSnapshotLocked(selfID string) *rewardSnapshot {
 	return snap
 }
 
-func (s *server) buildEventSnapshotLocked(selfID string) *eventSnapshot {
+func (s *server) buildEventSnapshotLocked(selfID string, lib *content.Library) *eventSnapshot {
 	state, _ := s.seatContextLocked(selfID)
 	if state == nil || state.Event == nil {
 		return nil
 	}
-	choices := make([]choiceSnapshot, 0, len(state.Event.Event.Choices))
-	for i, choice := range state.Event.Event.Choices {
+	eventDef := state.Event.Event
+	if localized, ok := lib.Events[eventDef.ID]; ok {
+		eventDef = localized
+		if len(state.Event.Event.Choices) > 0 && len(localized.Choices) > 0 {
+			filtered := make([]content.EventChoiceDef, 0, len(state.Event.Event.Choices))
+			for _, current := range state.Event.Event.Choices {
+				selected := current
+				for _, candidate := range localized.Choices {
+					if candidate.ID == current.ID {
+						selected = candidate
+						break
+					}
+				}
+				filtered = append(filtered, selected)
+			}
+			eventDef.Choices = filtered
+		}
+	}
+	choices := make([]choiceSnapshot, 0, len(eventDef.Choices))
+	for i, choice := range eventDef.Choices {
 		choices = append(choices, choiceSnapshot{
 			Index:       i + 1,
 			Label:       choice.Label,
 			Description: choice.Description,
-			Badges:      eventChoiceBadges(s.lib, choice),
+			Badges:      eventChoiceBadges(lib, choice),
 		})
 	}
 	return &eventSnapshot{
-		Name:        state.Event.Event.Name,
-		Description: state.Event.Event.Description,
-		Badges:      flagBadges(state.Event.Event.Flags),
+		Name:        eventDef.Name,
+		Description: eventDef.Description,
+		Badges:      flagBadges(eventDef.Flags),
 		Choices:     choices,
 		Log:         append([]string{}, state.Event.Log...),
-		Highlights:  eventHighlights(state.Event.Event.Flags, choices),
+		Highlights:  eventHighlights(eventDef.Flags, choices),
 	}
 }
 
-func (s *server) buildShopSnapshotLocked(selfID string) *shopSnapshot {
+func (s *server) buildShopSnapshotLocked(selfID string, lib *content.Library) *shopSnapshot {
 	state, _ := s.seatContextLocked(selfID)
 	if state == nil || state.Shop == nil {
 		return nil
 	}
 	offers := make([]shopOfferSnapshot, 0, len(state.Shop.Offers))
 	for i, offer := range state.Shop.Offers {
+		name, description := localizedShopOfferDisplay(lib, offer)
 		offers = append(offers, shopOfferSnapshot{
 			Index:       i + 1,
 			Kind:        offer.Kind,
 			Category:    shopOfferCategory(offer.Kind),
-			Name:        offer.Name,
-			Description: offer.Description,
+			Name:        name,
+			Description: description,
 			Price:       offer.Price,
-			Badges:      shopOfferBadges(s.lib, offer),
+			Badges:      shopOfferBadges(lib, offer),
 		})
 	}
 	return &shopSnapshot{
@@ -442,6 +513,61 @@ func (s *server) buildShopSnapshotLocked(selfID string) *shopSnapshot {
 		Log:        append([]string{}, state.Shop.Log...),
 		Highlights: shopHighlights(offers),
 	}
+}
+
+func localizedShopOfferDisplay(lib *content.Library, offer engine.ShopOffer) (string, string) {
+	name := offer.Name
+	description := offer.Description
+	switch strings.ToLower(strings.TrimSpace(offer.Kind)) {
+	case "heal":
+		if content.LanguageOf(lib) == i18n.LangEnUS {
+			return "Supplies", "Heal 18 HP."
+		}
+	case "remove":
+		if content.LanguageOf(lib) == i18n.LangEnUS {
+			return "Trim the Deck", "Remove a card from the deck."
+		}
+	case "service":
+		if content.LanguageOf(lib) == i18n.LangEnUS {
+			switch offer.ItemID {
+			case "service_echo_workshop":
+				return "Echo Workshop", "Choose an Attack card. It draws 1 extra card when played this run."
+			case "service_flash_workshop":
+				return "Flash Workshop", "Choose an upgradable card. It gains 1 extra Energy when played in the next combat."
+			case "service_ember_workshop":
+				return "Ember Workshop", "Choose an Attack card. It applies 2 extra Burn when it hits this run."
+			case "service_bastion_workshop":
+				return "Bastion Workshop", "Choose a Skill card. It gains 4 extra Block when played this run."
+			case "service_opening_workshop":
+				return "Opening Workshop", "Choose an upgradable card. It draws 1 extra card when played this turn of the next combat."
+			case "service_coop_card":
+				return "Co-op Briefing", "Gain a random Co-op card."
+			case "service_combo_drill":
+				return "Combo Drill", "Upgrade a random upgradable card and heal 10 HP."
+			}
+		}
+	case "card":
+		if card, ok := lib.Cards[offer.CardID]; ok {
+			name = card.Name
+			description = card.Description
+		}
+	case "relic":
+		if relic, ok := lib.Relics[offer.ItemID]; ok {
+			name = relic.Name
+			description = relic.Description
+		}
+	case "equipment":
+		if equipment, ok := lib.Equipments[offer.ItemID]; ok {
+			name = equipment.Name
+			description = equipment.Description
+		}
+	case "potion":
+		if potion, ok := lib.Potions[offer.ItemID]; ok {
+			name = potion.Name
+			description = potion.Description
+		}
+	}
+	return name, description
 }
 
 func (s *server) buildRestSnapshotLocked() *restSnapshot {
@@ -458,7 +584,7 @@ func buildEquipmentSnapshot(lib *content.Library, offer *engine.EquipmentOfferSt
 	candidate := lib.Equipments[offer.EquipmentID]
 	snap := &equipmentSnapshot{
 		Source:               offer.Source,
-		Slot:                 engine.EquipmentSlotName(offer.Slot),
+		Slot:                 engine.EquipmentSlotNameFor(content.LanguageOf(lib), offer.Slot),
 		CandidateName:        candidate.Name,
 		CandidateDescription: candidate.Description,
 		Price:                offer.Price,
@@ -473,7 +599,7 @@ func buildEquipmentSnapshot(lib *content.Library, offer *engine.EquipmentOfferSt
 	return snap
 }
 
-func (s *server) buildDeckActionSnapshotLocked(selfID string) *deckActionSnapshot {
+func (s *server) buildDeckActionSnapshotLocked(selfID string, lib *content.Library) *deckActionSnapshot {
 	if selfID != s.flowOwner {
 		return nil
 	}
@@ -489,9 +615,9 @@ func (s *server) buildDeckActionSnapshotLocked(selfID string) *deckActionSnapsho
 		card := run.Player.Deck[deckIndex]
 		cards = append(cards, cardSnapshot{
 			Index:   len(cards) + 1,
-			Name:    engine.CardStateName(s.lib, card.CardID, card.Upgraded),
-			Kind:    combatSnapshotCardKind(s.lib.Cards[card.CardID].Tags),
-			Summary: engine.DeckCardStateSummary(s.lib, card),
+			Name:    engine.CardStateName(lib, card.CardID, card.Upgraded),
+			Kind:    combatSnapshotCardKind(lib.Cards[card.CardID].Tags),
+			Summary: engine.DeckCardStateSummary(lib, card),
 		})
 	}
 	return &deckActionSnapshot{

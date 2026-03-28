@@ -580,6 +580,7 @@ func TestFixedPanelBodyLinesShowPagedHint(t *testing.T) {
 }
 
 func TestRenderEventFitsNarrowWidth(t *testing.T) {
+	lib := &content.Library{}
 	state := engine.EventState{
 		Event: content.EventDef{
 			Name:        "狭窄回廊",
@@ -592,7 +593,7 @@ func TestRenderEventFitsNarrowWidth(t *testing.T) {
 		},
 	}
 
-	rendered := RenderEvent(DefaultTheme(), state, 0, 34)
+	rendered := RenderEvent(DefaultTheme(), lib, state, 0, 34)
 	assertRenderWidth(t, rendered, 34)
 	if !strings.Contains(rendered, "狭窄回廊") {
 		t.Fatalf("expected event title, got %q", rendered)

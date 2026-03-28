@@ -1,18 +1,12 @@
 package engine
 
-import "cmdcards/internal/content"
+import (
+	"cmdcards/internal/content"
+	"cmdcards/internal/i18n"
+)
 
 func EquipmentSlotName(slot string) string {
-	switch slot {
-	case "weapon":
-		return "武器"
-	case "armor":
-		return "护甲"
-	case "accessory":
-		return "饰品"
-	default:
-		return slot
-	}
+	return EquipmentSlotNameFor(i18n.DefaultLanguage, slot)
 }
 
 func CurrentEquipmentID(player PlayerState, slot string) string {

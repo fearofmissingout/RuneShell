@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
 	"cmdcards/internal/i18n"
 )
 
-func RenderShopGrouped(theme Theme, run *engine.RunState, shop engine.ShopState, selected int, width int) string {
+func RenderShopGrouped(theme Theme, lib *content.Library, run *engine.RunState, shop engine.ShopState, selected int, width int) string {
 	panelWidth := fitPanelWidth(width, 84, 4)
 	contentWidth := panelContentWidth(panelWidth)
 	selected = clampSelection(selected, len(shop.Offers))
@@ -33,7 +34,8 @@ func RenderShopGrouped(theme Theme, run *engine.RunState, shop engine.ShopState,
 			lines = append(lines, theme.Accent.Render(shopKindLabel(theme, offer.Kind)))
 			lastKind = offer.Kind
 		}
-		line := truncateASCII(fmt.Sprintf("%d. %s [%d] - %s", i+1, offer.Name, offer.Price, offer.Description), contentWidth)
+		name, description := localizedShopOffer(lib, offer)
+		line := truncateASCII(fmt.Sprintf("%d. %s [%d] - %s", i+1, name, offer.Price, description), contentWidth)
 		if i == selected {
 			lines = append(lines, theme.Selected.Render(line))
 		} else {

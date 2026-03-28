@@ -110,15 +110,15 @@ func styleForNodeKind(theme Theme, kind engine.NodeKind) lipgloss.Style {
 
 func styleForNodeKindLabel(theme Theme, kind string) lipgloss.Style {
 	switch strings.TrimSpace(kind) {
-	case "Boss", engine.NodeKindName(engine.NodeBoss), engine.NodeKindName(engine.NodeElite):
+	case "Boss", engine.NodeKindNameFor(theme.Lang, engine.NodeBoss), engine.NodeKindNameFor(theme.Lang, engine.NodeElite):
 		return theme.Bad
-	case engine.NodeKindName(engine.NodeShop):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeShop):
 		return theme.Skill
-	case engine.NodeKindName(engine.NodeEvent):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeEvent):
 		return theme.Accent
-	case engine.NodeKindName(engine.NodeRest):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeRest):
 		return theme.ClassN
-	case engine.NodeKindName(engine.NodeMonster):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeMonster):
 		return theme.Good
 	default:
 		return theme.Muted
@@ -127,17 +127,17 @@ func styleForNodeKindLabel(theme Theme, kind string) lipgloss.Style {
 
 func displayNodeKindLabel(theme Theme, kind string) string {
 	switch strings.TrimSpace(kind) {
-	case engine.NodeKindName(engine.NodeMonster):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeMonster):
 		return theme.Text("node.monster")
-	case engine.NodeKindName(engine.NodeEvent):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeEvent):
 		return theme.Text("node.event")
-	case engine.NodeKindName(engine.NodeShop):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeShop):
 		return theme.Text("node.shop")
-	case engine.NodeKindName(engine.NodeElite):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeElite):
 		return theme.Text("node.elite")
-	case engine.NodeKindName(engine.NodeRest):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeRest):
 		return theme.Text("node.rest")
-	case engine.NodeKindName(engine.NodeBoss):
+	case engine.NodeKindNameFor(theme.Lang, engine.NodeBoss):
 		return theme.Text("node.boss")
 	default:
 		return kind
@@ -357,7 +357,7 @@ func RenderMapTreeOverlay(theme Theme, run *engine.RunState, currentNode engine.
 				ID:    node.ID,
 				Floor: node.Floor,
 				Index: node.Index,
-				Kind:  engine.NodeKindName(node.Kind),
+				Kind:  engine.NodeKindNameFor(theme.Lang, node.Kind),
 				Edges: append([]string{}, node.Edges...),
 			})
 		}
@@ -484,7 +484,7 @@ func mapOverlayPosition(theme Theme, currentNode engine.Node, currentFloor int) 
 	if currentNode.ID != "" {
 		position = theme.Textf("map.position.current", i18n.Args{
 			"floor": currentNode.Floor,
-			"kind":  displayNodeKindLabel(theme, engine.NodeKindName(currentNode.Kind)),
+			"kind":  displayNodeKindLabel(theme, engine.NodeKindNameFor(theme.Lang, currentNode.Kind)),
 		})
 	}
 	return position
@@ -559,7 +559,7 @@ func renderActorStripClean(theme Theme, title string, actors []engine.CombatActo
 			nameLine += " [" + theme.Text("common.target") + "]"
 		}
 		lines = append(lines, wrapLine(nameLine, cellWidth-2)...)
-		lines = append(lines, wrapLine(combatActorTextClean(theme, "", actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, engine.DescribeStatuses(actor.Statuses)), cellWidth-2)...)
+		lines = append(lines, wrapLine(combatActorTextClean(theme, "", actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, engine.DescribeStatusesFor(theme.Lang, actor.Statuses)), cellWidth-2)...)
 		content := strings.Join(lines, "\n")
 		style := cellStyle.Width(cellWidth)
 		if selected {
@@ -589,7 +589,7 @@ func renderEnemyStripClean(theme Theme, title string, enemies []engine.CombatEne
 			nameLine += " [" + theme.Text("common.target") + "]"
 		}
 		lines = append(lines, wrapLine(nameLine, cellWidth-2)...)
-		lines = append(lines, wrapLine(combatEnemyTextClean(theme, i+1, styledEnemyName(theme, enemy.Name), enemy.HP, enemy.MaxHP, enemy.Block, engine.DescribeStatuses(enemy.Statuses), ""), cellWidth-2)...)
+		lines = append(lines, wrapLine(combatEnemyTextClean(theme, i+1, styledEnemyName(theme, enemy.Name), enemy.HP, enemy.MaxHP, enemy.Block, engine.DescribeStatusesFor(theme.Lang, enemy.Statuses), ""), cellWidth-2)...)
 		content := strings.Join(lines, "\n")
 		style := cellStyle.Width(cellWidth)
 		if selected {
@@ -756,6 +756,7 @@ func RenderRewardDetailed(theme Theme, lib *content.Library, reward engine.Rewar
 	}
 	lines = append(lines, "", theme.Accent.Render(theme.Text("reward.choose_card")))
 	for i, card := range reward.CardChoices {
+		card = localizedRewardCard(lib, card)
 		kind := primaryCardKind(card.Tags)
 		line := truncateASCII(theme.Textf("reward.card_line", i18n.Args{
 			"index":   i + 1,
@@ -771,7 +772,7 @@ func RenderRewardDetailed(theme Theme, lib *content.Library, reward engine.Rewar
 		}
 	}
 	if len(reward.CardChoices) > 0 && selected >= 0 && selected < len(reward.CardChoices) {
-		card := reward.CardChoices[selected]
+		card := localizedRewardCard(lib, reward.CardChoices[selected])
 		lines = append(lines, "", theme.Accent.Render(theme.Text("reward.preview")))
 		lines = append(lines, theme.Subtitle.Render(theme.Textf("reward.card_header", i18n.Args{"name": card.Name, "cost": card.Cost, "tags": strings.Join(card.Tags, ", ")})))
 		for _, line := range wrapLine(card.Description, contentWidth) {
@@ -784,6 +785,13 @@ func RenderRewardDetailed(theme Theme, lib *content.Library, reward engine.Rewar
 	}
 	lines = append(lines, "", theme.Muted.Render(theme.Text("reward.footer")))
 	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
+}
+
+func localizedRewardCard(lib *content.Library, card content.CardDef) content.CardDef {
+	if localized, ok := lib.Cards[card.ID]; ok {
+		return localized
+	}
+	return card
 }
 
 func RenderEquipment(theme Theme, lib *content.Library, offer engine.EquipmentOfferState, selected int, width int) string {
@@ -872,18 +880,36 @@ func RenderDeckAction(theme Theme, lib *content.Library, run *engine.RunState, t
 	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
 }
 
-func RenderEvent(theme Theme, state engine.EventState, selected int, width int) string {
+func RenderEvent(theme Theme, lib *content.Library, state engine.EventState, selected int, width int) string {
 	panelWidth := fitPanelWidth(width, 72, 4)
 	contentWidth := panelContentWidth(panelWidth)
+	eventDef := state.Event
+	if localized, ok := lib.Events[state.Event.ID]; ok {
+		eventDef = localized
+		if len(state.Event.Choices) > 0 && len(localized.Choices) > 0 {
+			filtered := make([]content.EventChoiceDef, 0, len(state.Event.Choices))
+			for _, current := range state.Event.Choices {
+				selectedChoice := current
+				for _, candidate := range localized.Choices {
+					if candidate.ID == current.ID {
+						selectedChoice = candidate
+						break
+					}
+				}
+				filtered = append(filtered, selectedChoice)
+			}
+			eventDef.Choices = filtered
+		}
+	}
 	lines := []string{
-		theme.Title.Render(state.Event.Name),
+		theme.Title.Render(eventDef.Name),
 		"",
 	}
-	for _, line := range wrapLine(state.Event.Description, contentWidth) {
+	for _, line := range wrapLine(eventDef.Description, contentWidth) {
 		lines = append(lines, theme.Subtitle.Render(line))
 	}
 	lines = append(lines, "")
-	for i, choice := range state.Event.Choices {
+	for i, choice := range eventDef.Choices {
 		line := truncateASCII(fmt.Sprintf("%d. %s - %s", i+1, choice.Label, choice.Description), contentWidth)
 		if i == selected {
 			lines = append(lines, theme.Selected.Render(line))
@@ -898,14 +924,15 @@ func RenderEvent(theme Theme, state engine.EventState, selected int, width int) 
 	return theme.Panel.Width(panelWidth).Render(strings.Join(lines, "\n"))
 }
 
-func RenderShop(theme Theme, run *engine.RunState, shop engine.ShopState, selected int, width int) string {
+func RenderShop(theme Theme, lib *content.Library, run *engine.RunState, shop engine.ShopState, selected int, width int) string {
 	lines := []string{
 		theme.Title.Render(theme.Text("shop.title")),
 		theme.Subtitle.Render(theme.Textf("shop.gold", i18n.Args{"gold": run.Player.Gold})),
 		"",
 	}
 	for i, offer := range shop.Offers {
-		line := fmt.Sprintf("%d. %s %s [%d] - %s", i+1, renderInlineChips(theme, []string{strings.ToUpper(strings.TrimSpace(offer.Kind))}), offer.Name, offer.Price, offer.Description)
+		name, description := localizedShopOffer(lib, offer)
+		line := fmt.Sprintf("%d. %s %s [%d] - %s", i+1, renderInlineChips(theme, []string{strings.ToUpper(strings.TrimSpace(offer.Kind))}), name, offer.Price, description)
 		if i == selected {
 			lines = append(lines, theme.Selected.Render(line))
 		} else {
@@ -917,6 +944,34 @@ func RenderShop(theme Theme, run *engine.RunState, shop engine.ShopState, select
 		lines = append(lines, "", theme.Good.Render(strings.Join(shop.Log, " ")))
 	}
 	return theme.Panel.Width(fitPanelWidth(width, 76, 4)).Render(strings.Join(lines, "\n"))
+}
+
+func localizedShopOffer(lib *content.Library, offer engine.ShopOffer) (string, string) {
+	name := offer.Name
+	description := offer.Description
+	switch strings.ToLower(strings.TrimSpace(offer.Kind)) {
+	case "card":
+		if card, ok := lib.Cards[offer.CardID]; ok {
+			name = card.Name
+			description = card.Description
+		}
+	case "relic":
+		if relic, ok := lib.Relics[offer.ItemID]; ok {
+			name = relic.Name
+			description = relic.Description
+		}
+	case "equipment":
+		if equipment, ok := lib.Equipments[offer.ItemID]; ok {
+			name = equipment.Name
+			description = equipment.Description
+		}
+	case "potion":
+		if potion, ok := lib.Potions[offer.ItemID]; ok {
+			name = potion.Name
+			description = potion.Description
+		}
+	}
+	return name, description
 }
 
 func RenderRest(theme Theme, run *engine.RunState, selected int, log []string, width int) string {
@@ -994,7 +1049,7 @@ func renderActorStrip(theme Theme, title string, actors []engine.CombatActor, ta
 			nameLine += " [鐩爣]"
 		}
 		lines = append(lines, wrapLine(nameLine, cellWidth-2)...)
-		lines = append(lines, wrapLine(combatActorText("", actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, engine.DescribeStatuses(actor.Statuses)), cellWidth-2)...)
+		lines = append(lines, wrapLine(combatActorText("", actor.HP, actor.MaxHP, actor.Energy, actor.MaxEnergy, actor.Block, engine.DescribeStatusesFor(theme.Lang, actor.Statuses)), cellWidth-2)...)
 		content := strings.Join(lines, "\n")
 		style := cellStyle.Width(cellWidth)
 		if selected {
@@ -1024,7 +1079,7 @@ func renderEnemyStrip(theme Theme, title string, enemies []engine.CombatEnemy, t
 			nameLine += " [鐩爣]"
 		}
 		lines = append(lines, wrapLine(nameLine, cellWidth-2)...)
-		lines = append(lines, wrapLine(combatEnemyText(i+1, styledEnemyName(theme, enemy.Name), enemy.HP, enemy.MaxHP, enemy.Block, engine.DescribeStatuses(enemy.Statuses), ""), cellWidth-2)...)
+		lines = append(lines, wrapLine(combatEnemyText(i+1, styledEnemyName(theme, enemy.Name), enemy.HP, enemy.MaxHP, enemy.Block, engine.DescribeStatusesFor(theme.Lang, enemy.Statuses), ""), cellWidth-2)...)
 		content := strings.Join(lines, "\n")
 		style := cellStyle.Width(cellWidth)
 		if selected {
@@ -1264,7 +1319,7 @@ func renderCombatEnemyFocusPanel(theme Theme, combat *engine.CombatState, focusE
 	if combat != nil && target.Kind == engine.CombatTargetEnemy {
 		focusLabel = engine.DescribeCombatTarget(combat, target)
 	}
-	return renderCombatEnemySummaryPanel(theme, focusEnemy.Name, focusEnemy.HP, focusEnemy.MaxHP, focusEnemy.Block, engine.DescribeStatuses(focusEnemy.Statuses), engine.DescribeIntent(focusEnemy.CurrentIntent), focusLabel, panelWidth, maxLines)
+	return renderCombatEnemySummaryPanel(theme, focusEnemy.Name, focusEnemy.HP, focusEnemy.MaxHP, focusEnemy.Block, engine.DescribeStatusesFor(theme.Lang, focusEnemy.Statuses), engine.DescribeIntentFor(theme.Lang, focusEnemy.CurrentIntent), focusLabel, panelWidth, maxLines)
 }
 
 func renderCombatSeatStatusPanel(theme Theme, lib *content.Library, combat *engine.CombatState, run *engine.RunState, seatIndex int, target engine.CombatTarget, panelWidth int, maxLines int) string {
@@ -1287,7 +1342,7 @@ func renderCombatSeatStatusPanel(theme Theme, lib *content.Library, combat *engi
 		theme.Title.Render(styledClassName(theme, actor.Name, classID)),
 		theme.Normal.Render(fmt.Sprintf("HP %d/%d | \u683c\u6321 %d | \u80fd\u91cf %d/%d", actor.HP, actor.MaxHP, actor.Block, actor.Energy, actor.MaxEnergy)),
 	}
-	if status := engine.DescribeStatuses(actor.Statuses); status != "" {
+	if status := engine.DescribeStatusesFor(theme.Lang, actor.Statuses); status != "" {
 		for _, line := range wrapLine("\u72b6\u6001: "+status, panelContentWidth(panelWidth)) {
 			lines = append(lines, theme.Normal.Render(line))
 		}
@@ -1786,7 +1841,7 @@ func equipmentRarityLabel(rarity string) string {
 }
 
 func describeNode(theme Theme, node engine.Node) string {
-	return fmt.Sprintf("A%d F%d %s", node.Act, node.Floor, displayNodeKindLabel(theme, engine.NodeKindName(node.Kind)))
+	return fmt.Sprintf("A%d F%d %s", node.Act, node.Floor, displayNodeKindLabel(theme, engine.NodeKindNameFor(theme.Lang, node.Kind)))
 }
 
 func wrapLine(line string, width int) []string {

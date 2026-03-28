@@ -1,0 +1,200 @@
+{
+  "classes": {
+    "vanguard": {
+      "name": "Vanguard",
+      "description": "A front-line warrior who converts defense into offense and thrives in heavy gear."
+    },
+    "arcanist": {
+      "name": "Arcanist",
+      "description": "A spellcaster who overwhelms foes with chained spells, draw, and surging arcane bursts."
+    }
+  },
+  "potions": {
+    "tonic_minor": { "name": "Minor Tonic" },
+    "potion_focus": { "name": "Focus Draught" },
+    "potion_fury": { "name": "Fury Draught" },
+    "potion_battle_echo": { "name": "Battle Echo Draught" },
+    "potion_arcane_echo": { "name": "Arcane Echo Draught" },
+    "potion_echo": { "name": "Echo Draught" },
+    "potion_cinderstorm": { "name": "Cinderstorm Draught" },
+    "potion_venom_burst": { "name": "Venom Burst Draught" }
+  },
+  "encounters": {
+    "act1_raider": {
+      "name": "Rift Raider",
+      "intents": [{"name": "Lunge"}, {"name": "Suppress"}]
+    },
+    "act1_fangbeast": {
+      "name": "Fangbeast",
+      "intents": [{"name": "Bite"}, {"name": "Gather Strength"}]
+    },
+    "act1_watcher": {
+      "name": "Ash Overseer",
+      "intents": [{"name": "Heavy Club"}, {"name": "Brand"}]
+    },
+    "act1_elite": {
+      "name": "Bulwark Sentinel",
+      "intents": [{"name": "Siegebreak"}, {"name": "Iron Wall"}, {"name": "Sweep"}]
+    },
+    "act1_boss": {
+      "name": "Ember Colossus",
+      "intents": [{"name": "Molten Breath"}, {"name": "Molten Armor"}, {"name": "Flame Stomp"}]
+    },
+    "act2_duelist": {
+      "name": "Dusk Duelist",
+      "intents": [{"name": "Flurry"}, {"name": "Hamstring"}]
+    },
+    "act2_sentry": {
+      "name": "Disorder Sentinel",
+      "intents": [{"name": "Mag Strike"}, {"name": "Overload"}]
+    },
+    "act2_shade": {
+      "name": "Veil Stalker",
+      "intents": [{"name": "Infiltrate"}, {"name": "Corrupt"}]
+    },
+    "act2_elite": {
+      "name": "Clockwork Enforcer",
+      "intents": [{"name": "Heavy Cannon"}, {"name": "Armor Repair"}, {"name": "Mag Pull"}]
+    },
+    "act2_boss": {
+      "name": "Tower Seer",
+      "intents": [{"name": "Void Spear"}, {"name": "Prophetic Lock"}, {"name": "Astral Torrent"}]
+    },
+    "act3_reaver": {
+      "name": "Abyss Reaver",
+      "intents": [{"name": "Reap"}, {"name": "Drain"}]
+    },
+    "act3_sorcerer": {
+      "name": "Rift Warlock",
+      "intents": [{"name": "Void Bolt"}, {"name": "Curse Erosion"}]
+    },
+    "act3_guardian": {
+      "name": "Wasteland Guardian",
+      "intents": [{"name": "Shield Crash"}, {"name": "Guardian Rite"}]
+    },
+    "act3_elite": {
+      "name": "Final Pursuer",
+      "intents": [{"name": "Rend Blade"}, {"name": "Hex Armor"}, {"name": "Execution"}]
+    },
+    "act3_boss": {
+      "name": "King of the End",
+      "intents": [{"name": "Royal Cleave"}, {"name": "Doom Proclamation"}, {"name": "Annihilation Wave"}]
+    }
+  },
+  "events": {
+    "ancient_forge": {
+      "name": "Ancient Forge",
+      "description": "A still-warm furnace lies buried beneath broken brick.",
+      "choices": {
+        "temper": { "label": "Temper the Metal", "description": "Upgrade an upgradable card." },
+        "take_blade": { "label": "Take the Charm", "description": "Gain Fang Charm." }
+      }
+    },
+    "silent_pool": {
+      "name": "Silent Pool",
+      "description": "The water reflects an unnatural light.",
+      "choices": {
+        "drink": { "label": "Drink from the Pool", "description": "Recover 20 HP." },
+        "offer": { "label": "Toss a Coin", "description": "Receive a Focus Draught." }
+      }
+    },
+    "fallen_pack": {
+      "name": "Lost Pack",
+      "description": "An abandoned pack by the roadside hangs half-open.",
+      "choices": {
+        "loot": { "label": "Search the Supplies", "description": "Gain 35 gold." },
+        "read_note": { "label": "Read the Note", "description": "Gain Windstep." }
+      }
+    },
+    "inked_vellum": {
+      "name": "Inked Vellum",
+      "description": "A scroll still warm to the touch, its letters rearranging under your gaze.",
+      "choices": {
+        "scribe_echo": { "label": "Inscribe Echo Rune", "description": "Choose an attack card. For this run, it draws 1 extra card when played." },
+        "flash_charge": { "label": "Brand Flash Charge", "description": "Choose an upgradable card. In the next combat, it grants 1 extra energy when played." }
+      }
+    },
+    "ember_tablet": {
+      "name": "Ember Tablet",
+      "description": "Heat still seeps from the charred stone, as if it awaits a new bearer.",
+      "choices": {
+        "brand_cinders": { "label": "Engrave Cinder Brand", "description": "Choose an attack card. For this run, it applies 2 extra burn when it hits." },
+        "bottle_heat": { "label": "Bottle the Spark", "description": "Gain a Battle Echo Draught." }
+      }
+    },
+    "bulwark_blueprint": {
+      "name": "Bulwark Blueprint",
+      "description": "The rigid lines of the blueprint seem to preach order and tempo.",
+      "choices": {
+        "trace_bastion": { "label": "Trace the Bastion", "description": "Choose a skill card. For this run, it grants 4 extra block when played." },
+        "opening_spark": { "label": "Copy the Opening Form", "description": "Choose an upgradable card. In the first turn of the next combat, it draws 1 extra card when played." }
+      }
+    },
+    "arcane_echo": {
+      "name": "Arcane Echo",
+      "description": "Twisted spell resonance still lingers in the air.",
+      "choices": {
+        "attune": { "label": "Attune to the Echo", "description": "Gain Spell Core." },
+        "shield": { "label": "Smother the Ripple", "description": "Max HP +6." }
+      }
+    },
+    "scarred_altar": {
+      "name": "Scarred Altar",
+      "description": "Ancient lettering across the altar speaks only of cost.",
+      "choices": {
+        "blood_for_power": { "label": "Offer Blood", "description": "Lose 10 HP and gain Ember Totem." },
+        "step_back": { "label": "Step Away", "description": "Recover 10 HP." }
+      }
+    },
+    "field_workbench": {
+      "name": "Field Workbench",
+      "description": "Scattered tools and half-finished gear still hold a trace of heat.",
+      "choices": {
+        "reforge_blade": { "label": "Reforge the Blade", "description": "Gain Sunsteel Blade." },
+        "seal_armor": { "label": "Mend the Armor", "description": "Gain Ward Shell." }
+      }
+    },
+    "glass_sanctum": {
+      "name": "Glass Sanctum",
+      "description": "A fragment of light still flickers inside the paper-thin crystal shell.",
+      "choices": {
+        "touch_core": { "label": "Touch the Core", "description": "Lose 12 HP and gain Focus Prism." },
+        "bottle_light": { "label": "Bottle the Light", "description": "Gain a Focus Draught." }
+      }
+    },
+    "blood_coffer": {
+      "name": "Blood-Sealed Coffer",
+      "description": "The seal across the coffer pulses like a living vein.",
+      "choices": {
+        "break_seal": { "label": "Break the Seal", "description": "Lose 8 HP and gain 75 gold." },
+        "wear_token": { "label": "Wear the Token", "description": "Gain Bloodglass Pendant." }
+      }
+    },
+    "relic_annealer": {
+      "name": "Relic Annealer",
+      "description": "An ancient device hums softly, as if it could wake sleeping relics once more.",
+      "choices": {
+        "awaken_banner": { "label": "Rekindle the Banner", "description": "Upgrade War Banner into Awakened War Banner." },
+        "awaken_hourglass": { "label": "Reforge the Hourglass", "description": "Upgrade Crystal Hourglass into Awakened Crystal Hourglass." },
+        "awaken_ember": { "label": "Feed the Ember", "description": "Upgrade Ember Totem into Ember Totem Awakened." },
+        "awaken_core": { "label": "Resonate the Core", "description": "Upgrade Spell Core into Spell Core Awakened." }
+      }
+    },
+    "war_council": {
+      "name": "War Council",
+      "description": "Survivors still arguing over tactics beckon you to the table.",
+      "choices": {
+        "share_plan": { "label": "Trade Battle Notes", "description": "Gain Pack Tactics." },
+        "seal_pact": { "label": "Sign the Hunt Pact", "description": "Gain Linked Bracers." }
+      }
+    },
+    "relay_cache": {
+      "name": "Relay Cache",
+      "description": "The markings inside the crate only make sense to a coordinated squad.",
+      "choices": {
+        "take_barrier_pattern": { "label": "Take the Barrier Pattern", "description": "Gain Sanctuary Weave." },
+        "raise_signal": { "label": "Raise the Signal", "description": "Gain Signal Drum." }
+      }
+    }
+  }
+}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/fs"
 	"slices"
+
+	"cmdcards/internal/i18n"
 )
 
 var validOps = map[string]struct{}{
@@ -38,6 +40,7 @@ func LoadEmbedded() (*Library, error) {
 
 func LoadFS(files fs.FS) (*Library, error) {
 	lib := &Library{
+		Language:   i18n.DefaultLanguage,
 		Classes:    map[string]ClassDef{},
 		Cards:      map[string]CardDef{},
 		Relics:     map[string]RelicDef{},

@@ -110,6 +110,7 @@ type EventDef struct {
 }
 
 type Library struct {
+	Language       string
 	Classes        map[string]ClassDef
 	Cards          map[string]CardDef
 	Relics         map[string]RelicDef

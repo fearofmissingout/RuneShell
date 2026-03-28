@@ -388,7 +388,7 @@ func (s *server) mapVoteChoiceLabelForLocked(selfID string, vote int) string {
 		return textForLanguage(lang, "net.vote.route_index", i18n.Args{"index": vote})
 	}
 	node := reachable[vote-1]
-	return textForLanguage(lang, "net.vote.route_named", i18n.Args{"index": vote, "act": node.Act, "floor": node.Floor, "kind": engine.NodeKindName(node.Kind)})
+	return textForLanguage(lang, "net.vote.route_named", i18n.Args{"index": vote, "act": node.Act, "floor": node.Floor, "kind": engine.NodeKindNameFor(lang, node.Kind)})
 }
 
 func (s *server) mapVoteChoiceLabelLocked(vote int) string {
@@ -480,7 +480,7 @@ func describeMapVoteChoiceFor(lang string, reachable []engine.Node, vote int) st
 		return textForLanguage(lang, "net.vote.route_index", i18n.Args{"index": vote})
 	}
 	node := reachable[vote-1]
-	return textForLanguage(lang, "net.vote.route_named", i18n.Args{"index": vote, "act": node.Act, "floor": node.Floor, "kind": engine.NodeKindName(node.Kind)})
+	return textForLanguage(lang, "net.vote.route_named", i18n.Args{"index": vote, "act": node.Act, "floor": node.Floor, "kind": engine.NodeKindNameFor(lang, node.Kind)})
 }
 
 func describeMapVoteChoice(reachable []engine.Node, vote int) string {

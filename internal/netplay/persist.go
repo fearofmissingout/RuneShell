@@ -65,6 +65,7 @@ func newServerWithSavePath(lib *content.Library, addr, savePath string) (*server
 		return nil, err
 	}
 	return &server{
+		baseLib:    lib,
 		lib:        lib,
 		roomAddr:   listener.Addr().String(),
 		listener:   listener,
@@ -108,6 +109,7 @@ func loadServerFromSavePath(lib *content.Library, addr, savePath string) (*serve
 	}
 
 	srv := &server{
+		baseLib:             lib,
 		lib:                 lib,
 		roomAddr:            listener.Addr().String(),
 		listener:            listener,

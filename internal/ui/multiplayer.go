@@ -294,7 +294,7 @@ func RenderMultiplayerMapTreeOverlay(theme Theme, snapshot *netplay.Snapshot, wi
 	for _, floor := range mapData.Graph {
 		layer := make([]mapTreeNodeView, 0, len(floor))
 		for _, node := range floor {
-			layer = append(layer, mapTreeNodeView{ID: node.ID, Floor: node.Floor, Index: node.Index, Kind: engine.NodeKindName(engine.NodeKind(node.Kind)), Edges: append([]string{}, node.Edges...)})
+			layer = append(layer, mapTreeNodeView{ID: node.ID, Floor: node.Floor, Index: node.Index, Kind: engine.NodeKindNameFor(theme.Lang, engine.NodeKind(node.Kind)), Edges: append([]string{}, node.Edges...)})
 		}
 		layers = append(layers, layer)
 	}

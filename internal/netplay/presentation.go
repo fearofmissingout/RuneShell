@@ -186,7 +186,7 @@ func (s *server) buildCombatPhasePresentationLocked(selfID string, offline []str
 	if s.run == nil || s.combat == nil {
 		presentation.Examples = []string{"chat 准备结束回合", "end"}
 	} else {
-		view := buildCombatSnapshot(s.lib, s.run, s.combat, selfID, s.order, s.players)
+		view := buildCombatSnapshot(s.localizedLibLocked(selfID), s.run, s.combat, selfID, s.order, s.players)
 		if view != nil && len(view.Hand) > 0 {
 			presentation.Examples = append(presentation.Examples, combatCommandExample(view.Hand[0]))
 		}

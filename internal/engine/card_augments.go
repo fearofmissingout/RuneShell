@@ -191,9 +191,16 @@ func BuildAugmentDeckActionPlan(lib *content.Library, player PlayerState, effect
 	}
 	summary := DescribeEffects(lib, augment.Effects)
 	title := "选择要附加效果的卡牌"
-	subtitle := fmt.Sprintf("%s -> %s（%s）", sourceLabel, summary, cardAugmentScopeLabel(augment.Scope))
+	if content.LanguageOf(lib) == "en-US" {
+		title = "Choose a card to augment"
+	}
+	subtitle := fmt.Sprintf("%s -> %s（%s）", sourceLabel, summary, cardAugmentScopeLabelFor(lib, augment.Scope))
 	if effect.Tag != "" {
-		subtitle += fmt.Sprintf("，仅限 %s 牌", effect.Tag)
+		if content.LanguageOf(lib) == "en-US" {
+			subtitle += fmt.Sprintf(", only %s cards", content.HumanizeID(effect.Tag))
+		} else {
+			subtitle += fmt.Sprintf("，仅限 %s 牌", effect.Tag)
+		}
 	}
 	return &DeckActionPlan{
 		Mode:          "event_augment_card",
@@ -231,14 +238,14 @@ func ApplyDeckCardAugmentEffect(lib *content.Library, player *PlayerState, effec
 		if err := AddRunCardAugment(player, deckIndex, augment); err != nil {
 			return nil, err
 		}
-		return []string{fmt.Sprintf("%s 获得效果：%s（%s）", CardStateName(lib, player.Deck[deckIndex].CardID, player.Deck[deckIndex].Upgraded), DescribeEffects(lib, augment.Effects), cardAugmentScopeLabel(augment.Scope))}, nil
+		return []string{fmt.Sprintf("%s %s: %s (%s)", CardStateName(lib, player.Deck[deckIndex].CardID, player.Deck[deckIndex].Upgraded), augmentGainLabel(lib), DescribeEffects(lib, augment.Effects), cardAugmentScopeLabelFor(lib, augment.Scope))}, nil
 	}
 	logs := make([]string, 0, len(indexes))
 	for _, index := range indexes {
 		if err := AddRunCardAugment(player, index, augment); err != nil {
 			return nil, err
 		}
-		logs = append(logs, fmt.Sprintf("%s 获得效果：%s（%s）", CardStateName(lib, player.Deck[index].CardID, player.Deck[index].Upgraded), DescribeEffects(lib, augment.Effects), cardAugmentScopeLabel(augment.Scope)))
+		logs = append(logs, fmt.Sprintf("%s %s: %s (%s)", CardStateName(lib, player.Deck[index].CardID, player.Deck[index].Upgraded), augmentGainLabel(lib), DescribeEffects(lib, augment.Effects), cardAugmentScopeLabelFor(lib, augment.Scope)))
 	}
 	return logs, nil
 }
@@ -276,14 +283,18 @@ func normalizeAugmentSelector(selector string) string {
 }
 
 func cardAugmentScopeLabel(scope CardEffectScope) string {
-	switch scope {
-	case CardEffectScopeCombat:
-		return "下场战斗"
-	case CardEffectScopeTurn:
-		return "下场战斗的本回合"
-	default:
-		return "本局"
+	return cardAugmentScopeLabelFor(nil, scope)
+}
+
+func cardAugmentScopeLabelFor(lib *content.Library, scope CardEffectScope) string {
+	return content.AugmentScopeLabel(content.LanguageOf(lib), string(scope))
+}
+
+func augmentGainLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "gains effect"
 	}
+	return "获得效果"
 }
 
 func cloneEffectPtr(effect content.Effect) *content.Effect {

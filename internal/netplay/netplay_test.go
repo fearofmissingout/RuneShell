@@ -14,6 +14,7 @@ import (
 
 	"cmdcards/internal/content"
 	"cmdcards/internal/engine"
+	"cmdcards/internal/i18n"
 )
 
 type testClient struct {
@@ -652,16 +653,16 @@ func TestCombatSnapshotUsesSeatSpecificHandAndPotionState(t *testing.T) {
 
 	hostSnap := srv.buildCombatSnapshotLocked("p0")
 	guestSnap := srv.buildCombatSnapshotLocked("p1")
-	if len(hostSnap.Hand) != 1 || hostSnap.Hand[0].Name != lib.Cards["slash"].Name {
+	if len(hostSnap.Hand) != 1 || hostSnap.Hand[0].Name != srv.localizedLibLocked("p0").Cards["slash"].Name {
 		t.Fatalf("expected host hand snapshot to show slash, got %#v", hostSnap.Hand)
 	}
 	if len(hostSnap.Potions) != 0 {
 		t.Fatalf("expected host potions snapshot to be empty, got %#v", hostSnap.Potions)
 	}
-	if len(guestSnap.Hand) != 1 || guestSnap.Hand[0].Name != lib.Cards["guard"].Name {
+	if len(guestSnap.Hand) != 1 || guestSnap.Hand[0].Name != srv.localizedLibLocked("p1").Cards["guard"].Name {
 		t.Fatalf("expected guest hand snapshot to show guard, got %#v", guestSnap.Hand)
 	}
-	if len(guestSnap.Potions) != 1 || !strings.Contains(guestSnap.Potions[0], lib.Potions["potion_fury"].Name) {
+	if len(guestSnap.Potions) != 1 || !strings.Contains(guestSnap.Potions[0], srv.localizedLibLocked("p1").Potions["potion_fury"].Name) {
 		t.Fatalf("expected guest potions snapshot to show fury potion, got %#v", guestSnap.Potions)
 	}
 	srv.combat.Seats[1].PendingCardRepeats = []engine.PendingCardRepeat{{Count: 1, Tag: "spell"}}
@@ -746,7 +747,7 @@ func TestPersistRoundTripsDeckActionPromptState(t *testing.T) {
 	if state := restored.seatStates["p0"]; state == nil || state.Event == nil || state.Event.Event.ID != "bulwark_blueprint" {
 		t.Fatalf("expected restored seat event state, got %#v", state)
 	}
-	snap := restored.buildDeckActionSnapshotLocked("p0")
+	snap := restored.buildDeckActionSnapshotLocked("p0", restored.localizedLibLocked("p0"))
 	if snap == nil || len(snap.Cards) == 0 {
 		t.Fatalf("expected restored deck action snapshot cards, got %#v", snap)
 	}
@@ -1594,7 +1595,7 @@ func TestBuildSnapshotsMarkCoopContent(t *testing.T) {
 
 	shop := engine.StartShop(lib, srv.run)
 	ensureSeatState(srv, "p0", srv.run).Shop = &shop
-	shopSnap := srv.buildShopSnapshotLocked("p0")
+	shopSnap := srv.buildShopSnapshotLocked("p0", srv.localizedLibLocked("p0"))
 	foundService := false
 	foundCoopService := false
 	for _, offer := range shopSnap.Offers {
@@ -1616,7 +1617,7 @@ func TestBuildSnapshotsMarkCoopContent(t *testing.T) {
 	}
 
 	ensureSeatState(srv, "p0", srv.run).Event = &engine.EventState{Event: lib.Events["war_council"]}
-	eventSnap := srv.buildEventSnapshotLocked("p0")
+	eventSnap := srv.buildEventSnapshotLocked("p0", srv.localizedLibLocked("p0"))
 	if !containsString(eventSnap.Badges, "CO-OP") {
 		t.Fatalf("expected coop event badge, got %#v", eventSnap.Badges)
 	}
@@ -1629,7 +1630,7 @@ func TestBuildSnapshotsMarkCoopContent(t *testing.T) {
 		CardChoices: []content.CardDef{lib.Cards["pack_tactics"]},
 		RelicID:     "linked_bracers",
 	}
-	rewardSnap := srv.buildRewardSnapshotLocked("p0")
+	rewardSnap := srv.buildRewardSnapshotLocked("p0", srv.localizedLibLocked("p0"))
 	if !containsString(rewardSnap.Cards[0].Badges, "CO-OP") {
 		t.Fatalf("expected coop reward card badge, got %#v", rewardSnap.Cards[0].Badges)
 	}
@@ -1688,6 +1689,57 @@ func TestCombatSnapshotRetainsExtendedCombatLogTail(t *testing.T) {
 	}
 }
 
+func TestSnapshotLocalizesEventAndShopContentForEnglishPlayer(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	srv, err := newServer(lib, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("newServer() error = %v", err)
+	}
+	t.Cleanup(func() { _ = srv.listener.Close() })
+
+	srv.hostID = "p0"
+	srv.order = []string{"p0"}
+	srv.players["p0"] = &roomPlayer{ID: "p0", Seat: 1, Name: "Host", ClassID: "vanguard", Language: i18n.LangEnUS, Connected: true}
+	srv.run = &engine.RunState{
+		Player: engine.PlayerState{
+			Name:      "Host",
+			ClassID:   "vanguard",
+			MaxHP:     80,
+			HP:        80,
+			MaxEnergy: 3,
+			Gold:      120,
+			Deck:      []engine.DeckCard{{CardID: "slash"}},
+		},
+	}
+	state := ensureSeatState(srv, "p0", srv.run)
+	state.Event = &engine.EventState{Event: lib.Events["ancient_forge"]}
+	shop := engine.StartShop(lib, srv.run)
+	state.Shop = &shop
+
+	eventSnap := srv.buildEventSnapshotLocked("p0", srv.localizedLibLocked("p0"))
+	if eventSnap.Name != "Ancient Forge" {
+		t.Fatalf("expected localized event name, got %q", eventSnap.Name)
+	}
+	if len(eventSnap.Choices) == 0 || eventSnap.Choices[0].Label != "Temper the Metal" {
+		t.Fatalf("expected localized event choice label, got %#v", eventSnap.Choices)
+	}
+
+	shopSnap := srv.buildShopSnapshotLocked("p0", srv.localizedLibLocked("p0"))
+	foundEnglishService := false
+	for _, offer := range shopSnap.Offers {
+		if offer.Kind == "service" && offer.Name == "Echo Workshop" {
+			foundEnglishService = true
+			break
+		}
+	}
+	if !foundEnglishService {
+		t.Fatalf("expected localized English service offer, got %#v", shopSnap.Offers)
+	}
+}
+
 func TestEventAugmentChoiceStartsDeckActionPhase(t *testing.T) {
 	lib, err := content.LoadEmbedded()
 	if err != nil {
@@ -1730,7 +1782,7 @@ func TestEventAugmentChoiceStartsDeckActionPhase(t *testing.T) {
 	if len(srv.deckActionIndexes) == 0 {
 		t.Fatal("expected deck action indexes to be populated")
 	}
-	snap := srv.buildDeckActionSnapshotLocked("p0")
+	snap := srv.buildDeckActionSnapshotLocked("p0", srv.localizedLibLocked("p0"))
 	if snap == nil || len(snap.Cards) == 0 {
 		t.Fatalf("expected deck action snapshot cards, got %#v", snap)
 	}

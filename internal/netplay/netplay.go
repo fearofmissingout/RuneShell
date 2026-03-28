@@ -2833,17 +2833,36 @@ func classIDs(lib *content.Library) []string {
 }
 
 func describeTargetKind(kind engine.CombatTargetKind) string {
+	return describeTargetKindFor(i18n.DefaultLanguage, kind)
+}
+
+func describeTargetKindFor(lang string, kind engine.CombatTargetKind) string {
 	switch kind {
 	case engine.CombatTargetEnemy:
-		return "Single enemy"
+		if normalizeLanguage(lang) == i18n.LangEnUS {
+			return "Single enemy"
+		}
+		return "单体敌人"
 	case engine.CombatTargetEnemies:
-		return "All enemies"
+		if normalizeLanguage(lang) == i18n.LangEnUS {
+			return "All enemies"
+		}
+		return "全体敌人"
 	case engine.CombatTargetAlly:
-		return "Single ally"
+		if normalizeLanguage(lang) == i18n.LangEnUS {
+			return "Single ally"
+		}
+		return "单体友军"
 	case engine.CombatTargetAllies:
-		return "All allies"
+		if normalizeLanguage(lang) == i18n.LangEnUS {
+			return "All allies"
+		}
+		return "全体友军"
 	default:
-		return "No target"
+		if normalizeLanguage(lang) == i18n.LangEnUS {
+			return "No target"
+		}
+		return "无目标"
 	}
 }
 

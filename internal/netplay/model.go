@@ -291,6 +291,7 @@ type hostTransferRequest struct {
 }
 
 type server struct {
+	baseLib  *content.Library
 	lib      *content.Library
 	roomAddr string
 	listener net.Listener

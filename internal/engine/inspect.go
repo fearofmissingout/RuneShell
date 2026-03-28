@@ -97,130 +97,11 @@ func CardStateSummary(lib *content.Library, cardID string, upgraded bool) string
 }
 
 func DescribeEffects(lib *content.Library, effects []content.Effect) string {
-	parts := make([]string, 0, len(effects))
-	for _, effect := range effects {
-		parts = append(parts, DescribeEffect(lib, effect))
-	}
-	return strings.Join(parts, "；")
+	return content.DescribeEffects(lib, effects)
 }
 
 func DescribeEffect(lib *content.Library, effect content.Effect) string {
-	switch effect.Op {
-	case "damage":
-		switch effect.Target {
-		case "all_enemies":
-			return fmt.Sprintf("对全体敌人造成 %d 伤害", effect.Value)
-		case "all_allies":
-			return fmt.Sprintf("对全体友军造成 %d 伤害", effect.Value)
-		default:
-			return fmt.Sprintf("造成 %d 伤害", effect.Value)
-		}
-	case "block":
-		switch effect.Target {
-		case "all_allies":
-			return fmt.Sprintf("全体友军获得 %d 格挡", effect.Value)
-		default:
-			return fmt.Sprintf("获得 %d 格挡", effect.Value)
-		}
-	case "draw":
-		return fmt.Sprintf("抽 %d 张牌", effect.Value)
-	case "apply_status":
-		return fmt.Sprintf("%s %s %d%s", effectStatusTargetLabel(effect.Target), statusLabel(effect.Status), effect.Value, durationSuffix(effect.Duration))
-	case "cleanse_status":
-		return fmt.Sprintf("净化%s的%s", effectOwnerLabel(effect.Target), statusLabel(effect.Status))
-	case "modify_damage":
-		return fmt.Sprintf("%s伤害 %+d", modifierTriggerLabel(effect.Trigger), effect.Value)
-	case "modify_taken_damage":
-		if effect.Value < 0 {
-			return fmt.Sprintf("受到伤害 %d", effect.Value)
-		}
-		return fmt.Sprintf("受到伤害 +%d", effect.Value)
-	case "gain_gold":
-		return fmt.Sprintf("获得 %d 金币", effect.Value)
-	case "lose_hp":
-		return fmt.Sprintf("失去 %d 生命", effect.Value)
-	case "heal":
-		switch effect.Target {
-		case "all_allies":
-			return fmt.Sprintf("全体友军恢复 %d 生命", effect.Value)
-		default:
-			return fmt.Sprintf("恢复 %d 生命", effect.Value)
-		}
-	case "gain_max_hp":
-		return fmt.Sprintf("最大生命 +%d", effect.Value)
-	case "gain_relic":
-		if relic, ok := lib.Relics[effect.ItemID]; ok {
-			return "获得遗物 " + relic.Name
-		}
-		return "获得遗物"
-	case "gain_equipment":
-		if equipment, ok := lib.Equipments[effect.ItemID]; ok {
-			return "获得装备 " + equipment.Name
-		}
-		return "获得装备"
-	case "gain_potion":
-		if potion, ok := lib.Potions[effect.ItemID]; ok {
-			return "获得药水 " + potion.Name
-		}
-		return "获得药水"
-	case "upgrade_relic":
-		fromName := effect.ItemID
-		if relic, ok := lib.Relics[effect.ItemID]; ok {
-			fromName = relic.Name
-		}
-		toName := effect.ResultID
-		if relic, ok := lib.Relics[effect.ResultID]; ok {
-			toName = relic.Name
-		}
-		return "升级遗物 " + fromName + " -> " + toName
-	case "add_card":
-		if card, ok := lib.Cards[effect.CardID]; ok {
-			return "获得卡牌 " + card.Name
-		}
-		return "获得卡牌"
-	case "upgrade_card":
-		return "强化一张可升级卡牌"
-	case "augment_card":
-		effectName := DescribeEffects(lib, effect.Effects)
-		scope := "本局"
-		switch effect.Scope {
-		case "combat":
-			scope = "下场战斗"
-		case "turn":
-			scope = "下场战斗的本回合"
-		}
-		selector := "选择一张卡牌"
-		switch effect.Selector {
-		case "all":
-			selector = "所有卡牌"
-		case "choose_upgradable":
-			selector = "选择一张可升级卡牌"
-		case "all_upgradable":
-			selector = "所有可升级卡牌"
-		}
-		if effect.Tag != "" {
-			selector += "（" + effect.Tag + "）"
-		}
-		return selector + "附加效果: " + effectName + "（" + scope + "）"
-	case "gain_energy":
-		return fmt.Sprintf("获得 %d 能量", effect.Value)
-	case "potion_capacity":
-		return fmt.Sprintf("药水栏位 +%d", effect.Value)
-	case "repeat_next_card":
-		count := effect.Value
-		if count <= 0 {
-			count = 1
-		}
-		return pendingRepeatDescription(count, effect.Tag)
-	case "reply":
-		count := effect.Value
-		if count <= 0 {
-			count = 1
-		}
-		return fmt.Sprintf("本牌额外重复 %d 次", count)
-	default:
-		return effect.Op
-	}
+	return content.DescribeEffect(lib, effect)
 }
 
 func passiveSourceLines(lib *content.Library, player PlayerState) []string {
@@ -262,9 +143,17 @@ func runtimeCardLines(lib *content.Library, pile []RuntimeCard, empty string) []
 	if len(pile) == 0 {
 		return []string{empty}
 	}
-	lines := make([]string, 0, len(pile))
+	lines := make([]string, 0, len(pile)*4)
 	for i, card := range pile {
-		lines = append(lines, fmt.Sprintf("%d. %s | %s", i+1, CardStateName(lib, card.ID, card.Upgraded), RuntimeCardStateSummary(lib, card)))
+		def := lib.Cards[card.ID]
+		lines = append(lines, fmt.Sprintf("%d. %s | %s %d | %s", i+1, CardStateName(lib, card.ID, card.Upgraded), inspectCostLabel(lib), def.Cost, inspectTargetHint(lib, RuntimeCard{ID: card.ID, Upgraded: card.Upgraded, Augments: cloneCardAugments(card.Augments)})))
+		lines = append(lines, "   "+inspectCurrentLabel(lib)+": "+RuntimeCardStateSummary(lib, card))
+		if !card.Upgraded && len(def.UpgradeEffects) > 0 {
+			lines = append(lines, "   "+inspectUpgradeLabel(lib)+": "+DescribeEffects(lib, def.UpgradeEffects))
+		}
+		if len(card.Augments) > 0 {
+			lines = append(lines, "   "+inspectAugmentsLabel(lib)+": "+runtimeAugmentSummary(lib, card.Augments))
+		}
 	}
 	return lines
 }
@@ -273,11 +162,51 @@ func deckCardLines(lib *content.Library, deck []DeckCard, empty string) []string
 	if len(deck) == 0 {
 		return []string{empty}
 	}
-	lines := make([]string, 0, len(deck))
+	lines := make([]string, 0, len(deck)*4)
 	for i, card := range deck {
-		lines = append(lines, fmt.Sprintf("%d. %s | %s", i+1, CardStateName(lib, card.CardID, card.Upgraded), DeckCardStateSummary(lib, card)))
+		def := lib.Cards[card.CardID]
+		lines = append(lines, fmt.Sprintf("%d. %s | %s %d | %s", i+1, CardStateName(lib, card.CardID, card.Upgraded), inspectCostLabel(lib), def.Cost, inspectTargetHint(lib, RuntimeCard{ID: card.CardID, Upgraded: card.Upgraded})))
+		lines = append(lines, "   "+inspectCurrentLabel(lib)+": "+DeckCardStateSummary(lib, card))
+		if !card.Upgraded && len(def.UpgradeEffects) > 0 {
+			lines = append(lines, "   "+inspectUpgradeLabel(lib)+": "+DescribeEffects(lib, def.UpgradeEffects))
+		}
+		if len(card.Augments) > 0 {
+			lines = append(lines, "   "+inspectAugmentsLabel(lib)+": "+runtimeAugmentSummary(lib, card.Augments))
+		}
 	}
 	return lines
+}
+
+func inspectTargetHint(lib *content.Library, card RuntimeCard) string {
+	switch CardTargetKindForCard(lib, card) {
+	case CombatTargetEnemy:
+		return inspectTargetSingleEnemy(lib)
+	case CombatTargetEnemies:
+		return inspectTargetAllEnemies(lib)
+	case CombatTargetAlly:
+		return inspectTargetSingleAlly(lib)
+	case CombatTargetAllies:
+		return inspectTargetAllAllies(lib)
+	default:
+		return inspectTargetNone(lib)
+	}
+}
+
+func runtimeAugmentSummary(lib *content.Library, augments []CardAugment) string {
+	parts := make([]string, 0, len(augments))
+	for _, augment := range augments {
+		summary := DescribeEffects(lib, augment.Effects)
+		if summary == "" {
+			continue
+		}
+		scope := cardAugmentScopeLabelFor(lib, augment.Scope)
+		if augment.Name != "" {
+			parts = append(parts, augment.Name+": "+summary+" ("+scope+")")
+			continue
+		}
+		parts = append(parts, summary+" ("+scope+")")
+	}
+	return strings.Join(parts, " | ")
 }
 
 func combatOverviewLines(lib *content.Library, player PlayerState, combat *CombatState, seatIndex int) []string {
@@ -297,8 +226,8 @@ func combatOverviewLines(lib *content.Library, player PlayerState, combat *Comba
 	lines = append(lines, DescribeParty(combat)...)
 	lines = append(lines, "敌方：")
 	for i, enemy := range combat.Enemies {
-		line := fmt.Sprintf("%d. %s HP %d/%d Block %d | 意图: %s", i+1, enemy.Name, enemy.HP, enemy.MaxHP, enemy.Block, DescribeIntent(enemy.CurrentIntent))
-		if status := DescribeStatuses(enemy.Statuses); status != "" {
+		line := fmt.Sprintf("%d. %s HP %d/%d Block %d | %s: %s", i+1, enemy.Name, enemy.HP, enemy.MaxHP, enemy.Block, inspectIntentLabel(lib), DescribeIntentFor(content.LanguageOf(lib), enemy.CurrentIntent))
+		if status := DescribeStatusesFor(content.LanguageOf(lib), enemy.Statuses); status != "" {
 			line += " | " + status
 		}
 		lines = append(lines, line)
@@ -316,20 +245,111 @@ func combatOverviewLines(lib *content.Library, player PlayerState, combat *Comba
 func combatEffectLines(lib *content.Library, player PlayerState, combat *CombatState, seatIndex int) []string {
 	lines := []string{}
 	if actor := ActorForSeat(combat, seatIndex); actor != nil {
-		status := DescribeStatuses(actor.Statuses)
+		status := DescribeStatusesFor(content.LanguageOf(lib), actor.Statuses)
 		if status != "" {
-			lines = append(lines, "自身状态 | "+status)
+			lines = append(lines, inspectSelfStatusLabel(lib)+" | "+status)
 		}
 	}
 	for _, pending := range PendingNextCardRepeatDescriptions(combat, seatIndex) {
-		lines = append(lines, "待触发 | "+pending)
+		lines = append(lines, inspectPendingLabel(lib)+" | "+pending)
 	}
 	lines = append(lines, passiveSourceLines(lib, player)...)
 	lines = append(lines, encounterPassiveLines(lib, combat)...)
 	if len(lines) == 0 {
-		lines = append(lines, "当前没有常驻效果。")
+		lines = append(lines, inspectNoEffectsLabel(lib))
 	}
 	return lines
+}
+
+func inspectCostLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Cost"
+	}
+	return "费用"
+}
+
+func inspectCurrentLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Current"
+	}
+	return "当前"
+}
+
+func inspectUpgradeLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Upgrade"
+	}
+	return "升级"
+}
+
+func inspectAugmentsLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Augments"
+	}
+	return "附加效果"
+}
+
+func inspectTargetSingleEnemy(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Single enemy"
+	}
+	return "单体敌人"
+}
+
+func inspectTargetAllEnemies(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "All enemies"
+	}
+	return "全体敌人"
+}
+
+func inspectTargetSingleAlly(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Single ally"
+	}
+	return "单体友军"
+}
+
+func inspectTargetAllAllies(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "All allies"
+	}
+	return "全体友军"
+}
+
+func inspectTargetNone(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "No target"
+	}
+	return "无目标"
+}
+
+func inspectIntentLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Intent"
+	}
+	return "意图"
+}
+
+func inspectSelfStatusLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Self Status"
+	}
+	return "自身状态"
+}
+
+func inspectPendingLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "Pending"
+	}
+	return "待触发"
+}
+
+func inspectNoEffectsLabel(lib *content.Library) string {
+	if content.LanguageOf(lib) == "en-US" {
+		return "There are no persistent effects right now."
+	}
+	return "当前没有常驻效果。"
 }
 
 func effectStatusTargetLabel(target string) string {

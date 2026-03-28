@@ -2,10 +2,10 @@ package engine
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"cmdcards/internal/content"
+	"cmdcards/internal/i18n"
 )
 
 type GameMode string
@@ -339,20 +339,5 @@ func DefaultProfile(lib *content.Library) Profile {
 }
 
 func NodeKindName(kind NodeKind) string {
-	switch kind {
-	case NodeMonster:
-		return "怪物"
-	case NodeEvent:
-		return "事件"
-	case NodeShop:
-		return "商店"
-	case NodeElite:
-		return "精英"
-	case NodeRest:
-		return "篝火"
-	case NodeBoss:
-		return "Boss"
-	default:
-		return strings.ToUpper(string(kind))
-	}
+	return NodeKindNameFor(i18n.DefaultLanguage, kind)
 }
