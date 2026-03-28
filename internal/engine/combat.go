@@ -284,7 +284,11 @@ func AvailableCards(lib *content.Library, combat *CombatState) []RuntimeCard {
 		return out
 	}
 	for _, card := range seat.Hand {
-		if lib.Cards[card.ID].Cost <= combat.Player.Energy {
+		def := lib.Cards[card.ID]
+		if slices.Contains(def.Flags, "unplayable") {
+			continue
+		}
+		if def.Cost <= combat.Player.Energy {
 			out = append(out, card)
 		}
 	}
@@ -313,6 +317,9 @@ func PlaySeatCardWithTarget(lib *content.Library, playerState PlayerState, comba
 
 	card := seat.Hand[handIndex]
 	def := lib.Cards[card.ID]
+	if slices.Contains(def.Flags, "unplayable") {
+		return fmt.Errorf("card %q cannot be played", def.Name)
+	}
 	if def.Cost > actor.Energy {
 		return fmt.Errorf("not enough energy")
 	}
@@ -388,7 +395,12 @@ func endPartyTurn(lib *content.Library, players []PlayerState, combat *CombatSta
 	if combat.Won || combat.Lost {
 		return
 	}
-	discardHands(combat)
+	triggerHandEndCards(lib, players, combat)
+	checkCombatOutcome(combat)
+	if combat.Won || combat.Lost {
+		return
+	}
+	endTurnDiscardHands(lib, combat)
 	pruneTurnCardAugments(combat)
 	for _, actor := range PartyActors(combat) {
 		decrementTimedStatuses(actor)
@@ -605,6 +617,10 @@ func DescribeIntent(intent content.EnemyIntentDef) string {
 			lines = append(lines, fmt.Sprintf("净化 %s", statusLabel(effect.Status)))
 		case "heal":
 			lines = append(lines, fmt.Sprintf("治疗 %d", effect.Value))
+		case "lose_hp":
+			lines = append(lines, fmt.Sprintf("失去 %d 生命", effect.Value))
+		case "add_combat_card":
+			lines = append(lines, fmt.Sprintf("加入%s", effect.CardID))
 		}
 	}
 	return strings.Join(lines, " / ")
@@ -683,6 +699,18 @@ func resolveCombatEffect(lib *content.Library, playerState PlayerState, combat *
 			}
 			combat.log(fmt.Sprintf("%s获得状态 %s %d", targetLabel(combat, target), statusLabel(effect.Status), effect.Value))
 		}
+	case "lose_hp":
+		targets := resolveSupportTargets(combat, source, effect, chosenTarget)
+		if effectTargetsEnemies(effect, source) {
+			targets = resolveDamageTargets(combat, source, effect, chosenTarget)
+		}
+		for _, target := range targets {
+			lost := loseHP(targetActor(combat, target), effect.Value)
+			if target.Kind == CombatTargetAlly {
+				recordSeatDamageReceived(combat, target.Index, lost, 0)
+			}
+			combat.log(fmt.Sprintf("%s失去 %d 生命", targetLabel(combat, target), lost))
+		}
 	case "cleanse_status":
 		targets := resolveSupportTargets(combat, source, effect, chosenTarget)
 		for _, target := range targets {
@@ -711,11 +739,52 @@ func resolveCombatEffect(lib *content.Library, playerState PlayerState, combat *
 		}
 		queueNextCardRepeats(combat, source.index, count, effect.Tag)
 		combat.log(fmt.Sprintf("%s获得效果：%s", sourceLabel(combat, source), pendingRepeatDescription(count, effect.Tag)))
+	case "add_combat_card":
+		count := effect.Value
+		if count <= 0 {
+			count = 1
+		}
+		for _, seatIndex := range combatCardTargetSeatIndexes(combat, source, effect, chosenTarget) {
+			if err := addCombatCardsToPile(lib, combat, seatIndex, effect.CardID, effect.ItemType, count); err != nil {
+				return err
+			}
+			combat.log(fmt.Sprintf("%s向%s加入 %d 张%s", sourceLabel(combat, source), combatCardPileLabel(effect.ItemType), count, lib.Cards[effect.CardID].Name))
+		}
 	default:
 		return fmt.Errorf("unsupported combat effect %s", effect.Op)
 	}
 	syncPrimaryEnemy(combat)
 	return nil
+}
+
+func triggerHandEndCards(lib *content.Library, players []PlayerState, combat *CombatState) {
+	ensureCombatSeats(combat)
+	for seatIndex := range combat.Seats {
+		seat := combatSeat(combat, seatIndex)
+		if seat == nil {
+			continue
+		}
+		playerState := combatPlayerStateForSeat(combat, PlayerState{}, seatIndex)
+		if seatIndex < len(players) {
+			playerState = players[seatIndex]
+		}
+		for _, card := range append([]RuntimeCard{}, seat.Hand...) {
+			def, ok := lib.Cards[card.ID]
+			if !ok || !slices.Contains(def.Flags, "end_turn_trigger") {
+				continue
+			}
+			combat.log("滞留状态牌触发：" + def.Name)
+			effects, _ := splitCardPlayEffects(activeEffectsForCard(lib, card))
+			for _, effect := range effects {
+				if err := resolveCombatEffect(lib, playerState, combat, combatSourceRef{side: sidePlayer, index: seatIndex}, effect, card, CombatTarget{Kind: CombatTargetNone}); err != nil {
+					combat.log("状态牌触发失败: " + err.Error())
+				}
+				if combat.Won || combat.Lost {
+					return
+				}
+			}
+		}
+	}
 }
 
 func queueNextCardRepeats(combat *CombatState, seatIndex int, count int, tag string) {
@@ -905,6 +974,104 @@ func discardHands(combat *CombatState) {
 	ensureCombatSeats(combat)
 	for seatIndex := range combat.Seats {
 		discardHandForSeat(combat, seatIndex)
+	}
+}
+
+func endTurnDiscardHands(lib *content.Library, combat *CombatState) {
+	ensureCombatSeats(combat)
+	for seatIndex := range combat.Seats {
+		endTurnDiscardHandForSeat(lib, combat, seatIndex)
+	}
+}
+
+func endTurnDiscardHandForSeat(lib *content.Library, combat *CombatState, seatIndex int) {
+	seat := combatSeat(combat, seatIndex)
+	if seat == nil || len(seat.Hand) == 0 {
+		return
+	}
+	for _, card := range seat.Hand {
+		discardRuntimeCard(lib, seat, card)
+	}
+	seat.Hand = nil
+	syncLegacySeat0(combat)
+}
+
+func discardRuntimeCard(lib *content.Library, seat *CombatSeatState, card RuntimeCard) {
+	if seat == nil {
+		return
+	}
+	if def, ok := lib.Cards[card.ID]; ok && slices.Contains(def.Flags, "purge_on_discard") {
+		seat.Exhaust = append(seat.Exhaust, card)
+		return
+	}
+	seat.Discard = append(seat.Discard, card)
+}
+
+func combatCardTargetSeatIndexes(combat *CombatState, source combatSourceRef, effect content.Effect, chosenTarget CombatTarget) []int {
+	ensureCombatSeats(combat)
+	switch effect.Target {
+	case "all_allies":
+		indexes := make([]int, 0, len(combat.Seats))
+		for i := range combat.Seats {
+			indexes = append(indexes, i)
+		}
+		return indexes
+	case "ally":
+		if chosenTarget.Kind == CombatTargetAlly && validAllyTarget(combat, chosenTarget.Index) {
+			return []int{chosenTarget.Index}
+		}
+	}
+	if source.side == sidePlayer {
+		if source.index >= 0 && source.index < len(combat.Seats) {
+			return []int{source.index}
+		}
+		return []int{0}
+	}
+	if len(combat.Seats) == 0 {
+		return nil
+	}
+	return []int{0}
+}
+
+func addCombatCardsToPile(lib *content.Library, combat *CombatState, seatIndex int, cardID string, pile string, count int) error {
+	seat := combatSeat(combat, seatIndex)
+	if seat == nil {
+		return fmt.Errorf("invalid seat %d", seatIndex)
+	}
+	if _, ok := lib.Cards[cardID]; !ok {
+		return fmt.Errorf("unknown combat card %q", cardID)
+	}
+	if count <= 0 {
+		count = 1
+	}
+	for i := 0; i < count; i++ {
+		card := RuntimeCard{ID: cardID}
+		switch strings.TrimSpace(pile) {
+		case "hand":
+			if len(seat.Hand) >= combatHandLimit {
+				seat.Discard = append(seat.Discard, card)
+				combat.log("手牌已满，额外加入的牌进入弃牌堆")
+				continue
+			}
+			seat.Hand = append(seat.Hand, card)
+		case "discard":
+			seat.Discard = append(seat.Discard, card)
+		default:
+			seat.DrawPile = append(seat.DrawPile, card)
+		}
+	}
+	syncLegacySeat0(combat)
+	return nil
+}
+
+func combatCardPileLabel(pile string) string {
+	switch strings.TrimSpace(pile) {
+	case "hand":
+		return "手牌"
+	case "discard":
+		return "弃牌堆"
+	default:
+		return "抽牌堆"
 	}
 }
 

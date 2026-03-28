@@ -6,6 +6,12 @@
 
 `Go` `Bubble Tea` `Deckbuilder` `Roguelike` `LAN Co-op` `Terminal UI`
 
+## Documentation
+
+- [docs/README.md](./docs/README.md) is the docs index.
+- [docs/CONTENT_WIKI.md](./docs/CONTENT_WIKI.md) is the generated game content wiki.
+- Regenerate the wiki after content changes with `go run ./cmd/cmdcards export-wiki`.
+
 ## Terminal Showcase
 
 ```text

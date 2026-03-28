@@ -182,6 +182,36 @@ func TestEventChoiceDeckActionPlanSupportsTurnScopedBuildPackage(t *testing.T) {
 	}
 }
 
+func TestEventChoiceDeckActionPlanSupportsRepeatBuildPackage(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	run, err := NewRun(lib, DefaultProfile(lib), ModeStory, "vanguard", 42)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+
+	choice := lib.Events["mirror_manuscript"].Choices[0]
+	plan, err := EventChoiceDeckActionPlan(lib, run, choice, true)
+	if err != nil {
+		t.Fatalf("EventChoiceDeckActionPlan() error = %v", err)
+	}
+	if plan == nil {
+		t.Fatal("expected a deck action plan")
+	}
+	if plan.Effect == nil || plan.Effect.Scope != "combat" {
+		t.Fatalf("expected combat-scoped augment effect, got %#v", plan.Effect)
+	}
+	if len(plan.Effect.Effects) != 1 || plan.Effect.Effects[0].Op != "reply" {
+		t.Fatalf("expected reply augment payload, got %#v", plan.Effect)
+	}
+	if len(plan.Indexes) == 0 {
+		t.Fatal("expected at least one upgradable candidate card")
+	}
+}
+
 func TestResolveEventDecisionWithDeckChoiceAppliesBuildPackageAugment(t *testing.T) {
 	lib, err := content.LoadEmbedded()
 	if err != nil {
@@ -210,6 +240,37 @@ func TestResolveEventDecisionWithDeckChoiceAppliesBuildPackageAugment(t *testing
 	}
 	if len(augments[0].Effects) != 1 || augments[0].Effects[0].Op != "apply_status" || augments[0].Effects[0].Status != "burn" {
 		t.Fatalf("expected burn augment payload, got %#v", augments[0])
+	}
+}
+
+func TestResolveEventDecisionWithDeckChoiceAppliesRepeatAugment(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	run, err := NewRun(lib, DefaultProfile(lib), ModeStory, "vanguard", 23)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	state := EventState{Event: lib.Events["mirror_manuscript"]}
+	choice := lib.Events["mirror_manuscript"].Choices[0]
+	plan, err := EventChoiceDeckActionPlan(lib, run, choice, true)
+	if err != nil {
+		t.Fatalf("EventChoiceDeckActionPlan() error = %v", err)
+	}
+	if plan == nil {
+		t.Fatal("expected event deck action plan")
+	}
+	if err := ResolveEventDecisionWithDeckChoice(lib, run, &state, choice.ID, true, plan.Indexes[0]); err != nil {
+		t.Fatalf("ResolveEventDecisionWithDeckChoice() error = %v", err)
+	}
+	augments := run.Player.Deck[plan.Indexes[0]].Augments
+	if len(augments) != 1 {
+		t.Fatalf("expected selected card to gain one augment, got %#v", augments)
+	}
+	if len(augments[0].Effects) != 1 || augments[0].Effects[0].Op != "reply" {
+		t.Fatalf("expected reply augment payload, got %#v", augments[0])
 	}
 }
 

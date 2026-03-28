@@ -32,6 +32,7 @@ var validOps = map[string]struct{}{
 	"repeat_next_card":    {},
 	"reply":               {},
 	"augment_card":        {},
+	"add_combat_card":     {},
 }
 
 func LoadEmbedded() (*Library, error) {
@@ -259,6 +260,16 @@ func validateEffects(scope string, effects []Effect) error {
 		}
 		if effect.Op == "upgrade_relic" && (effect.ItemID == "" || effect.ResultID == "") {
 			return fmt.Errorf("%s: upgrade_relic requires item_id and result_id", scope)
+		}
+		if effect.Op == "add_combat_card" {
+			if effect.CardID == "" {
+				return fmt.Errorf("%s: add_combat_card requires card_id", scope)
+			}
+			switch effect.ItemType {
+			case "", "hand", "draw", "discard":
+			default:
+				return fmt.Errorf("%s: add_combat_card has invalid item_type %q", scope, effect.ItemType)
+			}
 		}
 		if effect.Op == "augment_card" {
 			if len(effect.Effects) == 0 {

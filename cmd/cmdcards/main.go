@@ -43,6 +43,8 @@ func run(args []string) error {
 		fmt.Printf("内容校验通过: 职业 %d, 卡牌 %d, 遗物 %d, 药水 %d, 装备 %d, 敌人遭遇 %d, 事件 %d\n",
 			len(lib.Classes), len(lib.Cards), len(lib.Relics), len(lib.Potions), len(lib.Equipments), len(lib.Encounters), len(lib.Events))
 		return nil
+	case "export-wiki":
+		return runExportWiki(lib, args[1:])
 	case "smoke":
 		return runSmoke(lib, args[1:])
 	case "host":

@@ -911,6 +911,10 @@ func contentAvailableInRun(run *RunState, flags []string) bool {
 	return effectivePartySize(run) > 1
 }
 
+func cardAllowedInStandardPools(flags []string) bool {
+	return !slices.Contains(flags, "coop_only") && !slices.Contains(flags, "status_card")
+}
+
 func taggedLogLine(coop bool, text string) string {
 	if !coop {
 		return text
@@ -924,7 +928,7 @@ func standardCardsForRun(run *RunState, cards []content.CardDef) []content.CardD
 		if !contentAvailableInRun(run, card.Flags) {
 			continue
 		}
-		if slices.Contains(card.Flags, "coop_only") {
+		if !cardAllowedInStandardPools(card.Flags) {
 			continue
 		}
 		out = append(out, card)
@@ -938,7 +942,7 @@ func coopCardsForRun(run *RunState, cards []content.CardDef) []content.CardDef {
 	}
 	out := []content.CardDef{}
 	for _, card := range cards {
-		if slices.Contains(card.Flags, "coop_only") {
+		if slices.Contains(card.Flags, "coop_only") && !slices.Contains(card.Flags, "status_card") {
 			out = append(out, card)
 		}
 	}

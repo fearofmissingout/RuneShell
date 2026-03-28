@@ -269,6 +269,9 @@ func chooseCardToPlay(lib *content.Library, combat *CombatState) int {
 	bestScore := -999
 	for i, card := range combat.Hand {
 		def := lib.Cards[card.ID]
+		if slices.Contains(def.Flags, "unplayable") {
+			continue
+		}
 		if def.Cost > combat.Player.Energy {
 			continue
 		}
@@ -362,6 +365,8 @@ func cardEffectScore(effects []content.Effect) int {
 			score += 2
 		case "gain_energy":
 			score += 4
+		case "lose_hp":
+			score -= effect.Value * 3
 		case "repeat_next_card":
 			score += max(1, effect.Value) * 5
 		case "reply":

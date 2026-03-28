@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"testing"
 
 	"cmdcards/internal/content"
@@ -325,6 +326,136 @@ func TestEnemyIntentTargetsOpponent(t *testing.T) {
 	}
 	if got := statusStacks(combat.Enemy.Statuses, "vulnerable"); got != 0 {
 		t.Fatalf("expected enemy vulnerable to stay 0, got %d", got)
+	}
+}
+
+func TestAddCombatCardEffectAddsStatusCardsToHandAndDraw(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{ClassID: "vanguard", Name: "tester", MaxHP: 80, HP: 80, MaxEnergy: 3}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "hexsmith",
+		Kind:       "monster",
+		Act:        2,
+		HP:         30,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{{
+			Name: "hex",
+			Effects: []content.Effect{
+				{Op: "add_combat_card", Target: "all_allies", ItemType: "hand", CardID: "slow_form"},
+				{Op: "add_combat_card", Target: "all_allies", ItemType: "draw", CardID: "bleed_wound"},
+			},
+		}},
+	}
+
+	combat := NewCombat(lib, player, encounter, 5)
+	StartPlayerTurn(lib, player, combat)
+	EndPlayerTurn(lib, player, combat)
+
+	if len(combat.Hand) != 1 || combat.Hand[0].ID != "slow_form" {
+		t.Fatalf("expected slow_form in hand, got %#v", combat.Hand)
+	}
+	if len(combat.DrawPile) == 0 || combat.DrawPile[len(combat.DrawPile)-1].ID != "bleed_wound" {
+		t.Fatalf("expected bleed_wound in draw pile, got %#v", combat.DrawPile)
+	}
+}
+
+func TestUnplayableStatusCardCannotBePlayed(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{ClassID: "vanguard", Name: "tester", MaxHP: 80, HP: 80, MaxEnergy: 3}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         20,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}}},
+	}
+	combat := NewCombat(lib, player, encounter, 7)
+	combat.Hand = []RuntimeCard{{ID: "bleed_wound"}}
+	combat.DrawPile = nil
+	if err := PlayCard(lib, player, combat, 0); err == nil {
+		t.Fatal("expected bleed_wound to be unplayable")
+	}
+}
+
+func TestHandEndTriggerStatusCardDealsDamageAndPurges(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	player := PlayerState{ClassID: "vanguard", Name: "tester", MaxHP: 80, HP: 80, MaxEnergy: 3}
+	encounter := content.EncounterDef{
+		ID:         "dummy",
+		Name:       "dummy",
+		Kind:       "monster",
+		Act:        1,
+		HP:         20,
+		GoldReward: 0,
+		CardReward: 0,
+		IntentCycle: []content.EnemyIntentDef{{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}}},
+	}
+	combat := NewCombat(lib, player, encounter, 9)
+	combat.Hand = []RuntimeCard{{ID: "bleed_wound"}}
+	combat.DrawPile = nil
+	refreshSeat0FromLegacy(combat)
+
+	EndPlayerTurn(lib, player, combat)
+
+	if combat.Player.HP != 78 {
+		t.Fatalf("expected bleed_wound to deal 2 direct HP damage, got %d", combat.Player.HP)
+	}
+	if len(combat.Exhaust) != 1 || combat.Exhaust[0].ID != "bleed_wound" {
+		t.Fatalf("expected bleed_wound to purge into exhaust, got %#v", combat.Exhaust)
+	}
+	if len(combat.Discard) != 0 {
+		t.Fatalf("expected no discarded bleed_wound, got %#v", combat.Discard)
+	}
+}
+
+func TestStatusCardsAreExcludedFromStandardPools(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+	run, err := NewRun(lib, DefaultProfile(lib), ModeStory, "vanguard", 21)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+
+	for _, card := range standardCardsForRun(run, lib.NeutralCards()) {
+		if slices.Contains(card.Flags, "status_card") {
+			t.Fatalf("expected standard card pool to exclude status cards, got %q", card.ID)
+		}
+	}
+
+	shop := StartShop(lib, run)
+	for _, offer := range shop.Offers {
+		if offer.CardID == "" {
+			continue
+		}
+		if slices.Contains(lib.Cards[offer.CardID].Flags, "status_card") {
+			t.Fatalf("expected shop to exclude status cards, got %q", offer.CardID)
+		}
+	}
+
+	reward := BuildReward(lib, run, Node{ID: "m", Kind: NodeMonster, Act: 1, Floor: 1, Index: 0}, content.EncounterDef{ID: "dummy", Name: "dummy", Kind: "monster", Act: 1, HP: 10, CardReward: 3, IntentCycle: []content.EnemyIntentDef{{Name: "wait", Effects: []content.Effect{{Op: "damage", Value: 0}}}}})
+	for _, card := range reward.CardChoices {
+		if slices.Contains(card.Flags, "status_card") {
+			t.Fatalf("expected reward to exclude status cards, got %q", card.ID)
+		}
 	}
 }
 

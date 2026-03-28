@@ -185,7 +185,7 @@
     "gold_reward": 27,
     "card_reward": 3,
     "intent_cycle": [
-      {"name": "刻印针", "description": "法术攻击并施加虚弱", "effects": [{"op": "damage", "value": 8, "tag": "spell"}, {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]},
+      {"name": "刻印针", "description": "法术攻击并塞入缓慢", "effects": [{"op": "damage", "value": 8, "tag": "spell"}, {"op": "add_combat_card", "target": "all_allies", "item_type": "hand", "card_id": "slow_form"}]},
       {"name": "缝合术", "description": "治疗并格挡", "effects": [{"op": "heal", "value": 4}, {"op": "block", "value": 6}]}
     ]
   },
@@ -252,7 +252,7 @@
     ],
     "intent_cycle": [
       {"name": "虚空矛", "description": "法术重击并施加虚弱", "effects": [{"op": "damage", "value": 15, "tag": "spell"}, {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]},
-      {"name": "预言封锁", "description": "格挡并施加燃烧与易伤", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}]},
+      {"name": "预言封锁", "description": "格挡并施加燃烧、易伤与出血", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}, {"op": "add_combat_card", "target": "all_allies", "item_type": "hand", "card_id": "bleed_wound"}]},
       {"name": "星界洪流", "description": "法术重击并施加脆弱", "effects": [{"op": "damage", "value": 18, "tag": "spell"}, {"op": "apply_status", "target": "opponent", "status": "frail", "value": 1, "duration": 2}]}
     ]
   },
@@ -299,7 +299,7 @@
     "card_reward": 3,
     "intent_cycle": [
       {"name": "虚空弹", "description": "法术攻击", "effects": [{"op": "damage", "value": 13, "tag": "spell"}]},
-      {"name": "咒蚀", "description": "施加易伤与燃烧", "effects": [{"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}]}
+      {"name": "咒蚀", "description": "施加易伤、燃烧并塞入缓慢", "effects": [{"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 2, "duration": 3}, {"op": "add_combat_card", "target": "all_allies", "item_type": "draw", "card_id": "slow_form"}]}
     ]
   },
   {
@@ -391,7 +391,7 @@
     ],
     "intent_cycle": [
       {"name": "王权斩", "description": "强攻并施加虚弱", "effects": [{"op": "damage", "value": 16, "tag": "attack"}, {"op": "apply_status", "target": "opponent", "status": "weak", "value": 1, "duration": 2}]},
-      {"name": "末日宣告", "description": "施加燃烧与易伤并格挡", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 3, "duration": 3}, {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}]},
+      {"name": "末日宣告", "description": "施加燃烧、易伤并塞入出血", "effects": [{"op": "block", "value": 10}, {"op": "apply_status", "target": "opponent", "status": "burn", "value": 3, "duration": 3}, {"op": "apply_status", "target": "opponent", "status": "vulnerable", "value": 1, "duration": 2}, {"op": "add_combat_card", "target": "all_allies", "item_type": "hand", "card_id": "bleed_wound"}]},
       {"name": "湮灭波", "description": "法术重击并净化虚弱", "effects": [{"op": "damage", "value": 20, "tag": "spell"}, {"op": "cleanse_status", "target": "self", "status": "weak", "value": 99}]}
     ]
   },

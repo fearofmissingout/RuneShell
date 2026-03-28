@@ -151,17 +151,27 @@ func TestShopServiceDefinitionsExposeFirstBuildPackage(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		classID    string
-		wantItemID string
-		wantScope  string
-		wantTag    string
+		name         string
+		classID      string
+		wantItemID   string
+		wantScope    string
+		wantTag      string
+		wantNestedOp string
+		wantStatus   string
 	}{
-		{name: "draw attack", classID: "vanguard", wantItemID: "service_echo_workshop", wantScope: "run", wantTag: "attack"},
-		{name: "combat energy", classID: "vanguard", wantItemID: "service_flash_workshop", wantScope: "combat", wantTag: ""},
-		{name: "burn attack", classID: "vanguard", wantItemID: "service_ember_workshop", wantScope: "run", wantTag: "attack"},
-		{name: "skill bastion", classID: "vanguard", wantItemID: "service_bastion_workshop", wantScope: "run", wantTag: "skill"},
-		{name: "opening turn", classID: "vanguard", wantItemID: "service_opening_workshop", wantScope: "turn", wantTag: ""},
+		{name: "draw attack", classID: "vanguard", wantItemID: "service_echo_workshop", wantScope: "run", wantTag: "attack", wantNestedOp: "draw"},
+		{name: "combat energy", classID: "vanguard", wantItemID: "service_flash_workshop", wantScope: "combat", wantTag: "", wantNestedOp: "gain_energy"},
+		{name: "burn attack", classID: "vanguard", wantItemID: "service_ember_workshop", wantScope: "run", wantTag: "attack", wantNestedOp: "apply_status", wantStatus: "burn"},
+		{name: "skill bastion", classID: "vanguard", wantItemID: "service_bastion_workshop", wantScope: "run", wantTag: "skill", wantNestedOp: "block"},
+		{name: "opening turn", classID: "vanguard", wantItemID: "service_opening_workshop", wantScope: "turn", wantTag: "", wantNestedOp: "draw"},
+		{name: "mirror repeat", classID: "vanguard", wantItemID: "service_mirror_workshop", wantScope: "combat", wantTag: "", wantNestedOp: "reply"},
+		{name: "renew skill", classID: "vanguard", wantItemID: "service_renew_workshop", wantScope: "run", wantTag: "skill", wantNestedOp: "apply_status", wantStatus: "regen"},
+		{name: "sunder attack", classID: "vanguard", wantItemID: "service_sunder_workshop", wantScope: "run", wantTag: "attack", wantNestedOp: "apply_status", wantStatus: "vulnerable"},
+		{name: "vanguard oathguard", classID: "vanguard", wantItemID: "service_oathguard_workshop", wantScope: "run", wantTag: "skill", wantNestedOp: "apply_status", wantStatus: "guard"},
+		{name: "vanguard breach", classID: "vanguard", wantItemID: "service_breach_workshop", wantScope: "combat", wantTag: "attack", wantNestedOp: "apply_status", wantStatus: "frail"},
+		{name: "spell resonance", classID: "arcanist", wantItemID: "service_resonance_workshop", wantScope: "run", wantTag: "spell", wantNestedOp: "apply_status", wantStatus: "focus"},
+		{name: "arcanist cinderweave", classID: "arcanist", wantItemID: "service_cinderweave_workshop", wantScope: "run", wantTag: "spell", wantNestedOp: "apply_status", wantStatus: "burn"},
+		{name: "arcanist prismdraft", classID: "arcanist", wantItemID: "service_prismdraft_workshop", wantScope: "combat", wantTag: "spell", wantNestedOp: "draw"},
 	}
 
 	for _, tc := range tests {
@@ -183,6 +193,12 @@ func TestShopServiceDefinitionsExposeFirstBuildPackage(t *testing.T) {
 			}
 			if def.Effect.Tag != tc.wantTag {
 				t.Fatalf("expected tag %q, got %#v", tc.wantTag, def.Effect)
+			}
+			if len(def.Effect.Effects) != 1 || def.Effect.Effects[0].Op != tc.wantNestedOp {
+				t.Fatalf("expected nested op %q, got %#v", tc.wantNestedOp, def.Effect.Effects)
+			}
+			if tc.wantStatus != "" && def.Effect.Effects[0].Status != tc.wantStatus {
+				t.Fatalf("expected status %q, got %#v", tc.wantStatus, def.Effect.Effects[0])
 			}
 		})
 	}

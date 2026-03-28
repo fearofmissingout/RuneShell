@@ -199,9 +199,150 @@ func shopServiceDefinitions(lib *content.Library, run *RunState) []shopServiceDe
 				},
 			},
 		},
+		{
+			ID:          "service-mirror-workshop",
+			ItemID:      "service_mirror_workshop",
+			Name:        "镜刻工坊",
+			Description: "选择一张可升级牌，下场战斗中它会额外重复 1 次。",
+			Price:       78,
+			Effect: content.Effect{
+				Op:       "augment_card",
+				Name:     "mirror_reply",
+				Scope:    "combat",
+				Selector: "choose_upgradable",
+				Effects: []content.Effect{
+					{Op: "reply", Value: 1},
+				},
+			},
+		},
+		{
+			ID:          "service-renew-workshop",
+			ItemID:      "service_renew_workshop",
+			Name:        "回生工坊",
+			Description: "选择一张技能牌，本局使其使用时额外获得 2 层再生。",
+			Price:       67,
+			Effect: content.Effect{
+				Op:       "augment_card",
+				Name:     "renew_moss",
+				Scope:    "run",
+				Selector: "choose",
+				Tag:      "skill",
+				Effects: []content.Effect{
+					{Op: "apply_status", Target: "self", Status: "regen", Value: 2, Duration: 2},
+				},
+			},
+		},
+		{
+			ID:          "service-resonance-workshop",
+			ItemID:      "service_resonance_workshop",
+			Name:        "共鸣工坊",
+			Description: "选择一张法术牌，本局使其使用时额外获得 1 层聚能。",
+			Price:       74,
+			Effect: content.Effect{
+				Op:       "augment_card",
+				Name:     "resonance_ink",
+				Scope:    "run",
+				Selector: "choose",
+				Tag:      "spell",
+				Effects: []content.Effect{
+					{Op: "apply_status", Target: "self", Status: "focus", Value: 1, Duration: 2},
+				},
+			},
+		},
+		{
+			ID:          "service-sunder-workshop",
+			ItemID:      "service_sunder_workshop",
+			Name:        "裂甲工坊",
+			Description: "选择一张攻击牌，本局使其命中时额外施加 1 层易伤。",
+			Price:       70,
+			Effect: content.Effect{
+				Op:       "augment_card",
+				Name:     "sunder_mark",
+				Scope:    "run",
+				Selector: "choose",
+				Tag:      "attack",
+				Effects: []content.Effect{
+					{Op: "apply_status", Target: "enemy", Status: "vulnerable", Value: 1, Duration: 2},
+				},
+			},
+		},
 	}
 	for _, spec := range augmentSpecs {
 		defs = appendAvailableAugmentShopService(defs, lib, run.Player, spec)
+	}
+
+	if run.Player.ClassID == "vanguard" {
+		defs = appendAvailableAugmentShopService(defs, lib, run.Player, augmentShopServiceSpec{
+			ID:          "service-oathguard-workshop",
+			ItemID:      "service_oathguard_workshop",
+			Name:        "誓甲工坊",
+			Description: "选择一张技能牌，本局使其使用时额外获得 1 层壁守。",
+			Price:       71,
+			Effect: content.Effect{
+				Op:       "augment_card",
+				Name:     "oathguard_mark",
+				Scope:    "run",
+				Selector: "choose",
+				Tag:      "skill",
+				Effects: []content.Effect{
+					{Op: "apply_status", Target: "self", Status: "guard", Value: 1, Duration: 2},
+				},
+			},
+		})
+		defs = appendAvailableAugmentShopService(defs, lib, run.Player, augmentShopServiceSpec{
+			ID:          "service-breach-workshop",
+			ItemID:      "service_breach_workshop",
+			Name:        "破阵工坊",
+			Description: "选择一张攻击牌，下场战斗中它命中时额外施加 1 层脆弱。",
+			Price:       73,
+			Effect: content.Effect{
+				Op:       "augment_card",
+				Name:     "breach_stamp",
+				Scope:    "combat",
+				Selector: "choose",
+				Tag:      "attack",
+				Effects: []content.Effect{
+					{Op: "apply_status", Target: "enemy", Status: "frail", Value: 1, Duration: 2},
+				},
+			},
+		})
+	}
+
+	if run.Player.ClassID == "arcanist" {
+		defs = appendAvailableAugmentShopService(defs, lib, run.Player, augmentShopServiceSpec{
+			ID:          "service-cinderweave-workshop",
+			ItemID:      "service_cinderweave_workshop",
+			Name:        "烬纹工坊",
+			Description: "选择一张法术牌，本局使其命中时额外施加 2 层燃烧。",
+			Price:       75,
+			Effect: content.Effect{
+				Op:       "augment_card",
+				Name:     "cinderweave_brand",
+				Scope:    "run",
+				Selector: "choose",
+				Tag:      "spell",
+				Effects: []content.Effect{
+					{Op: "apply_status", Target: "enemy", Status: "burn", Value: 2, Duration: 2},
+				},
+			},
+		})
+		defs = appendAvailableAugmentShopService(defs, lib, run.Player, augmentShopServiceSpec{
+			ID:          "service-prismdraft-workshop",
+			ItemID:      "service_prismdraft_workshop",
+			Name:        "棱写工坊",
+			Description: "选择一张法术牌，下场战斗中它使用时额外抽 1 张牌。",
+			Price:       69,
+			Effect: content.Effect{
+				Op:       "augment_card",
+				Name:     "prismdraft_echo",
+				Scope:    "combat",
+				Selector: "choose",
+				Tag:      "spell",
+				Effects: []content.Effect{
+					{Op: "draw", Value: 1},
+				},
+			},
+		})
 	}
 
 	if effectivePartySize(run) > 1 {

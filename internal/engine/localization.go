@@ -262,6 +262,18 @@ func DescribeIntentFor(lang string, intent content.EnemyIntentDef) string {
 			} else {
 				lines = append(lines, fmt.Sprintf("治疗 %d", effect.Value))
 			}
+		case "lose_hp":
+			if isEnglishLanguage(lang) {
+				lines = append(lines, fmt.Sprintf("Lose %d HP", effect.Value))
+			} else {
+				lines = append(lines, fmt.Sprintf("失去 %d 生命", effect.Value))
+			}
+		case "add_combat_card":
+			if isEnglishLanguage(lang) {
+				lines = append(lines, "Add "+effect.CardID)
+			} else {
+				lines = append(lines, "加入"+effect.CardID)
+			}
 		}
 	}
 	return strings.Join(lines, " / ")

@@ -49,6 +49,29 @@
     "effects": [{"op": "draw", "value": 1}, {"op": "gain_energy", "value": 1}],
     "upgrade_effects": [{"op": "draw", "value": 2}, {"op": "gain_energy", "value": 1}]
   },
+  {
+    "id": "bleed_wound",
+    "class_id": "neutral",
+    "name": "出血",
+    "description": "无法打出。回合结束时若仍在手中，失去 2 生命。",
+    "rarity": "status",
+    "cost": 0,
+    "tags": ["status"],
+    "flags": ["status_card", "enemy_only", "unplayable", "end_turn_trigger", "purge_on_discard"],
+    "effects": [{"op": "lose_hp", "value": 2}]
+  },
+  {
+    "id": "slow_form",
+    "class_id": "neutral",
+    "name": "缓慢",
+    "description": "消耗。抽 1 张牌。",
+    "rarity": "status",
+    "cost": 1,
+    "tags": ["skill", "status"],
+    "flags": ["status_card", "enemy_only"],
+    "effects": [{"op": "draw", "value": 1}],
+    "exhaust": true
+  },
 
   {
     "id": "shield_bash",

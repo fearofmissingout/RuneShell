@@ -187,6 +187,131 @@
     ]
   },
   {
+    "id": "mirror_manuscript",
+    "name": "镜厅手稿",
+    "description": "薄银纸页层层相覆，字迹像是会在不同角度里互相复写。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "mirror_reply",
+        "label": "摘录复写诀",
+        "description": "选择一张可升级牌，下场战斗中它会额外重复 1 次。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "mirror_reply",
+            "scope": "combat",
+            "selector": "choose_upgradable",
+            "effects": [
+              {"op": "reply", "value": 1}
+            ]
+          }
+        ]
+      },
+      {
+        "id": "chain_script",
+        "label": "抄录连缀式",
+        "description": "选择一张技能牌，本局使其使用时让下一张牌额外重复 1 次。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "chain_script",
+            "scope": "run",
+            "selector": "choose",
+            "tag": "skill",
+            "effects": [
+              {"op": "repeat_next_card", "value": 1}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sundered_sight",
+    "name": "裂光瞄镜",
+    "description": "碎裂的透镜会把敌人的护势与破绽一并放大。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "mark_fracture",
+        "label": "标出裂隙",
+        "description": "选择一张攻击牌，本局使其命中时额外施加 1 层易伤。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "sunder_mark",
+            "scope": "run",
+            "selector": "choose",
+            "tag": "attack",
+            "effects": [
+              {"op": "apply_status", "target": "enemy", "status": "vulnerable", "value": 1, "duration": 2}
+            ]
+          }
+        ]
+      },
+      {
+        "id": "drag_crosshair",
+        "label": "拖住准星",
+        "description": "选择一张攻击牌，本局使其命中时额外施加 1 层虚弱。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "drag_crosshair",
+            "scope": "run",
+            "selector": "choose",
+            "tag": "attack",
+            "effects": [
+              {"op": "apply_status", "target": "enemy", "status": "weak", "value": 1, "duration": 2}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "moss_cloister",
+    "name": "苔息修院",
+    "description": "被藤蔓包裹的修院里残留着缓慢而顽固的庇护气息。",
+    "acts": [1, 2, 3],
+    "choices": [
+      {
+        "id": "weave_regen",
+        "label": "缝入回春纹",
+        "description": "选择一张技能牌，本局使其使用时额外获得 2 层再生。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "renew_moss",
+            "scope": "run",
+            "selector": "choose",
+            "tag": "skill",
+            "effects": [
+              {"op": "apply_status", "target": "self", "status": "regen", "value": 2, "duration": 2}
+            ]
+          }
+        ]
+      },
+      {
+        "id": "set_thorn_ward",
+        "label": "植入荆护",
+        "description": "选择一张技能牌，本局使其使用时额外获得 1 层荆棘。",
+        "effects": [
+          {
+            "op": "augment_card",
+            "name": "thorn_ward",
+            "scope": "run",
+            "selector": "choose",
+            "tag": "skill",
+            "effects": [
+              {"op": "apply_status", "target": "self", "status": "thorns", "value": 1, "duration": 2}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "arcane_echo",
     "name": "奥术回音",
     "description": "空气里残留着扭曲的咒文回响。",

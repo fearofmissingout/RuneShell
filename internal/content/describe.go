@@ -160,6 +160,26 @@ func describeEffectEN(lib *Library, effect Effect) string {
 			return "Gain card " + card.Name
 		}
 		return "Gain a card"
+	case "add_combat_card":
+		name := HumanizeID(effect.CardID)
+		if card, ok := lib.Cards[effect.CardID]; ok {
+			name = card.Name
+		}
+		count := effect.Value
+		if count <= 0 {
+			count = 1
+		}
+		pile := "draw pile"
+		switch effect.ItemType {
+		case "hand":
+			pile = "hand"
+		case "discard":
+			pile = "discard pile"
+		}
+		if count == 1 {
+			return fmt.Sprintf("Add %s to %s", name, pile)
+		}
+		return fmt.Sprintf("Add %d %s to %s", count, name, pile)
 	case "upgrade_card":
 		return "Upgrade a card"
 	case "augment_card":
@@ -264,6 +284,26 @@ func describeEffectZH(lib *Library, effect Effect) string {
 			return "获得卡牌 " + card.Name
 		}
 		return "获得卡牌"
+	case "add_combat_card":
+		name := effect.CardID
+		if card, ok := lib.Cards[effect.CardID]; ok {
+			name = card.Name
+		}
+		count := effect.Value
+		if count <= 0 {
+			count = 1
+		}
+		pile := "抽牌堆"
+		switch effect.ItemType {
+		case "hand":
+			pile = "手牌"
+		case "discard":
+			pile = "弃牌堆"
+		}
+		if count == 1 {
+			return fmt.Sprintf("向%s加入 %s", pile, name)
+		}
+		return fmt.Sprintf("向%s加入 %d 张%s", pile, count, name)
 	case "upgrade_card":
 		return "强化一张可升级卡牌"
 	case "augment_card":

@@ -2573,6 +2573,10 @@ func flagBadges(flags []string) []string {
 		switch flag {
 		case "coop_only":
 			badges = append(badges, "CO-OP")
+		case "status_card":
+			badges = append(badges, "STATUS")
+		case "unplayable":
+			badges = append(badges, "LOCKED")
 		}
 	}
 	return badges
