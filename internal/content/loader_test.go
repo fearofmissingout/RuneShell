@@ -20,6 +20,33 @@ func TestLoadEmbedded(t *testing.T) {
 	}
 }
 
+func TestEncounterRosterCoverage(t *testing.T) {
+	lib, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	counts := map[int]map[string]int{}
+	for _, encounter := range lib.Encounters {
+		if counts[encounter.Act] == nil {
+			counts[encounter.Act] = map[string]int{}
+		}
+		counts[encounter.Act][encounter.Kind]++
+	}
+
+	for act := 1; act <= 3; act++ {
+		if got := counts[act]["monster"]; got < 5 {
+			t.Fatalf("expected at least 5 monsters in act %d, got %d", act, got)
+		}
+		if got := counts[act]["elite"]; got < 2 {
+			t.Fatalf("expected at least 2 elites in act %d, got %d", act, got)
+		}
+		if got := counts[act]["boss"]; got < 2 {
+			t.Fatalf("expected at least 2 bosses in act %d, got %d", act, got)
+		}
+	}
+}
+
 func TestLoadFSRejectsInvalidEffect(t *testing.T) {
 	files := fstest.MapFS{}
 	for _, name := range []string{

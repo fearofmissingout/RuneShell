@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"reflect"
 	"testing"
 
 	"cmdcards/internal/content"
@@ -36,5 +37,25 @@ func TestRunSmokeEndlessReachesActFour(t *testing.T) {
 	}
 	if result.ReachedAct < 4 {
 		t.Fatalf("expected endless smoke to reach act 4+, got act %d", result.ReachedAct)
+	}
+}
+
+func TestRunSmokeDeterministicForSameSeed(t *testing.T) {
+	lib, err := content.LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	first, err := RunSmoke(lib, DefaultProfile(lib), ModeEndless, "vanguard", 1)
+	if err != nil {
+		t.Fatalf("first RunSmoke() error = %v", err)
+	}
+	second, err := RunSmoke(lib, DefaultProfile(lib), ModeEndless, "vanguard", 1)
+	if err != nil {
+		t.Fatalf("second RunSmoke() error = %v", err)
+	}
+
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("expected smoke results to be deterministic for same seed,\nfirst=%+v\nsecond=%+v", first, second)
 	}
 }

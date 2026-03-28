@@ -76,15 +76,20 @@ func GenerateActMap(seed int64, act int, _ []string) MapGraph {
 
 func pickNodeKind(rng *rand.Rand, floor int, shopLastFloor bool) NodeKind {
 	if floor < 5 {
-		pool := []NodeKind{NodeMonster, NodeMonster, NodeEvent, NodeRest}
+		pool := []NodeKind{
+			NodeMonster, NodeMonster, NodeMonster,
+			NodeEvent,
+			NodeRest,
+		}
 		if !shopLastFloor {
 			pool = append(pool, NodeShop)
 		}
 		return pool[rng.Intn(len(pool))]
 	}
 	pool := []NodeKind{
-		NodeMonster, NodeMonster, NodeMonster,
-		NodeEvent, NodeEvent,
+		NodeMonster, NodeMonster, NodeMonster, NodeMonster,
+		NodeEvent,
+		NodeEvent,
 		NodeRest,
 		NodeElite,
 	}

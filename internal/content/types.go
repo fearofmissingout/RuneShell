@@ -123,6 +123,8 @@ type Library struct {
 	relicOrder     []string
 	potionOrder    []string
 	equipmentOrder []string
+	encounterOrder []string
+	eventOrder     []string
 }
 
 func (l *Library) ClassList() []ClassDef {
@@ -161,6 +163,22 @@ func (l *Library) EquipmentList() []EquipmentDef {
 	out := make([]EquipmentDef, 0, len(l.equipmentOrder))
 	for _, id := range l.equipmentOrder {
 		out = append(out, l.Equipments[id])
+	}
+	return out
+}
+
+func (l *Library) EncounterList() []EncounterDef {
+	out := make([]EncounterDef, 0, len(l.encounterOrder))
+	for _, id := range l.encounterOrder {
+		out = append(out, l.Encounters[id])
+	}
+	return out
+}
+
+func (l *Library) EventList() []EventDef {
+	out := make([]EventDef, 0, len(l.eventOrder))
+	for _, id := range l.eventOrder {
+		out = append(out, l.Events[id])
 	}
 	return out
 }

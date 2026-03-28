@@ -121,7 +121,7 @@ func randomEncounter(lib *content.Library, run *RunState, kind string, act int) 
 		baseAct = 3
 	}
 	matches := make([]content.EncounterDef, 0)
-	for _, encounter := range lib.Encounters {
+	for _, encounter := range lib.EncounterList() {
 		if encounter.Kind == kind && encounter.Act == baseAct {
 			matches = append(matches, encounter)
 		}
@@ -130,7 +130,7 @@ func randomEncounter(lib *content.Library, run *RunState, kind string, act int) 
 	if len(matches) == 0 {
 		return content.EncounterDef{}
 	}
-	encounter := matches[rng.Intn(len(matches))]
+	encounter := cloneEncounterDef(matches[rng.Intn(len(matches))])
 	return scaleEncounterForAct(encounter, act)
 }
 
@@ -156,21 +156,13 @@ func buildEncounterGroup(lib *content.Library, run *RunState, kind string, act, 
 }
 
 func encounterGroupSize(seed int64, kind string, act, floor, index int) int {
-	rng := rand.New(rand.NewSource(seed + int64(act*3001+floor*41+index*11)))
 	switch kind {
 	case "boss":
 		return 1
 	case "elite":
-		if act >= 3 && rng.Intn(100) < 35 {
-			return 2
-		}
 		return 1
 	default:
-		maxCount := 2
-		if act >= 3 {
-			maxCount = 3
-		}
-		return 1 + rng.Intn(maxCount)
+		return 1
 	}
 }
 
@@ -233,6 +225,20 @@ func encounterGroupName(name string, slot int) string {
 	return fmt.Sprintf("%s #%d", name, slot+1)
 }
 
+func cloneEncounterDef(encounter content.EncounterDef) content.EncounterDef {
+	cloned := encounter
+	cloned.Passives = cloneEffects(encounter.Passives)
+	cloned.IntentCycle = make([]content.EnemyIntentDef, 0, len(encounter.IntentCycle))
+	for _, intent := range encounter.IntentCycle {
+		cloned.IntentCycle = append(cloned.IntentCycle, content.EnemyIntentDef{
+			Name:        intent.Name,
+			Description: intent.Description,
+			Effects:     cloneEffects(intent.Effects),
+		})
+	}
+	return cloned
+}
+
 func scaleEncounterForAct(encounter content.EncounterDef, act int) content.EncounterDef {
 	if act <= encounter.Act {
 		return encounter
@@ -263,7 +269,7 @@ func StartEvent(lib *content.Library, run *RunState, node Node) (EventState, err
 		act = 3
 	}
 	matches := make([]content.EventDef, 0)
-	for _, event := range lib.Events {
+	for _, event := range lib.EventList() {
 		if !contentAvailableInRun(run, event.Flags) {
 			continue
 		}

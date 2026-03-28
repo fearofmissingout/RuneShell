@@ -248,6 +248,8 @@ func cloneLibrary(base *Library) *Library {
 		relicOrder:     append([]string{}, base.relicOrder...),
 		potionOrder:    append([]string{}, base.potionOrder...),
 		equipmentOrder: append([]string{}, base.equipmentOrder...),
+		encounterOrder: append([]string{}, base.encounterOrder...),
+		eventOrder:     append([]string{}, base.eventOrder...),
 	}
 	for id, def := range base.Classes {
 		cloned := def

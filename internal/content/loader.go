@@ -162,6 +162,7 @@ func LoadFS(files fs.FS) (*Library, error) {
 			}
 		}
 		lib.Encounters[item.ID] = item
+		lib.encounterOrder = append(lib.encounterOrder, item.ID)
 	}
 
 	var events []EventDef
@@ -181,6 +182,7 @@ func LoadFS(files fs.FS) (*Library, error) {
 			}
 		}
 		lib.Events[item.ID] = item
+		lib.eventOrder = append(lib.eventOrder, item.ID)
 	}
 
 	for _, class := range lib.Classes {
